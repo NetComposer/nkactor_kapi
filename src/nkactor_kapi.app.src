@@ -1,0 +1,12 @@
+{application, nkactor_kapi, [
+    {description, "Actor K-API Framework"},
+    {vsn, "develop"},
+    {modules, []},
+    {registered, []},
+    {mod, {nkactor_kapi_app, []}},
+    {applications, [
+        nkserver
+    ]},
+    {env, [
+    ]}
+]}.
