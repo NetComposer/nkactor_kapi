@@ -31,9 +31,8 @@
 %% Utilities
 %% ===================================================================
 
-%% @doc Updates request with group, vsn, resource, name, namespace, uid from body,
-%% and checks that nothing is changed if present.
-pre_request(#{body:=Body}=Req) ->
+%% @doc Converts body to a valid actor and checks request
+pre_request(#{body:=Actor}=Req) ->
     try
         Syntax = #{
             apiVersion => binary,
@@ -45,47 +44,40 @@ pre_request(#{body:=Body}=Req) ->
                 resourceVersion => {'__key', hash}
             }
         },
-        Body2 = case nklib_syntax:parse_all(Body, Syntax) of
-            {ok, ParsedBody} ->
-                ParsedBody;
+        Parsed = case nklib_syntax:parse_all(Actor, Syntax) of
+            {ok, ParsedActor} ->
+                ParsedActor;
             {error, ParseError} ->
                 throw(ParseError)
         end,
-        Meta2 = maps:get(metadata, Body2, #{}),
-        Req2 = case Meta2 of
-            #{namespace:=BodyNamespace} ->
-                case maps:find(namespace, Req) of
-                    {ok, BodyNamespace} ->
-                        Req;
-                    error ->
-                        Req#{namespace => BodyNamespace};
-                    _ ->
-                        throw({resource_invalid, namespace})
-                end;
-            _ ->
-                Req
-        end,
-        Namespace = case Req2 of
-            #{namespace:=ReqNamespace} ->
-                ReqNamespace;
-            _ ->
-                throw(namespace_missing)
-        end,
-        Req3 = case Body2 of
-            #{apiVersion:=ApiVersion, kind:=Kind} ->
+        Meta = maps:get(metadata, Parsed, #{}),
+        BaseFields = maps:with([uid, name, namespace], Meta),
+        Data = maps:without([apiVersion, kind, metadata], Parsed),
+        MetaFields = maps:without([uid, name, namespace], Meta),
+        Actor1 = BaseFields#{
+            data => Data,
+            metadata => MetaFields
+        },
+        Actor2 = case Parsed of
+            #{apiVersion:=ApiVersion} ->
                 case nkactor_kapi_lib:get_group_vsn(ApiVersion) of
                     {Group, Vsn} ->
-                        case maps:get(group, Req, Group) of
-                            Group ->
-                                ok;
-                            _ ->
-                                throw({resource_invalid, apiVersion})
-                        end,
-                        case maps:get(vsn, Req, Vsn) of
-                            Vsn ->
-                                ok;
-                            _ ->
-                                throw({resource_invalid, apiVersion})
+                        Actor1#{group => Group, vsn => Vsn};
+                    error ->
+                        throw({resource_invalid, apiVersion})
+                end;
+            _ ->
+                Actor1
+        end,
+        Actor3 = case Parsed of
+            #{kind:=Kind} ->
+                case Actor2 of
+                    #{group:=ActorGroup} ->
+                        Namespace = case maps:find(namespace, Actor2) of
+                            {ok, ActorNamespace} ->
+                                ActorNamespace;
+                            false ->
+                                maps:get(namespace, Req, <<>>)
                         end,
                         SrvId = case nkactor_namespace:find_service(Namespace) of
                             {ok, SrvId0} ->
@@ -93,47 +85,44 @@ pre_request(#{body:=Body}=Req) ->
                             {error, SrvError} ->
                                 throw(SrvError)
                         end,
-                        Res = case nkactor_actor:get_module(SrvId, Group, {camel, Kind}) of
+                        Res = case nkactor_actor:get_module(SrvId, ActorGroup, {camel, Kind}) of
                             undefined ->
                                 throw({resource_invalid, kind});
                             Module ->
                                 #{resource:=Res0} = nkactor_actor:get_config(SrvId, Module),
                                 Res0
                         end,
-                        Req2#{
-                            group => Group,
-                            vsn => Vsn,
-                            resource => Res
-                        };
-                    error ->
-                        throw({resource_invalid, apiVersion})
+                        Actor2#{resource => Res};
+                    _ ->
+                        throw({field_missing, <<"apiVersion">>})
                 end;
             _ ->
-                Req2
+                Actor2
         end,
-        Req4 = case maps:find(name, Meta2) of
-            {ok, Name} ->
-                Req3#{name => Name};
-            _ ->
-                Req3
-        end,
-        Req5 = case maps:find(uid, Meta2) of
-            {ok, UID} ->
-                Req4#{uid => UID};
-            _ ->
-                Req4
-        end,
-        Meta3 = maps:without([uid, name, namespace], Meta2),
-        Body3 = maps:without([apiVersion, kind], Body2),
-        {ok, Req5#{body:=Body3#{metadata=>Meta3}}}
+        % This will also be checked later, but error info (fields) would be different
+%%        case {Actor3, Req} of
+%%            {#{group:=G1}, #{group:=G2}} when G1 /= G2 ->
+%%                throw({field_invalid, <<"apiVersion">>});
+%%            {#{resource:=R1}, #{resource:=R2}} when R1 /= R2 ->
+%%                lager:error("NKLOG R1 R2 ~p", []),
+%%                throw({field_invalid, <<"kind">>});
+%%            {#{name:=N1}, #{name:=N2}} when N1 /= N2 ->
+%%                throw({field_invalid, <<"metadata.name">>});
+%%            {#{namespace:=S1}, #{namespace:=S2}} when S1 /= S2 ->
+%%                throw({field_invalid, <<"metadata.namespace">>});
+%%            {#{uid:=U1}, #{uid:=U2}} when U1 /= U2 ->
+%%                throw({field_invalid, <<"metadata.uid">>});
+%%            _ ->
+%%                ok
+%%        end,
+        {ok, Req#{body:=Actor3}}
     catch
         throw:Throw ->
-            {error, Throw, Req}
+            {error, Throw}
     end;
 
 pre_request(Req) ->
     {ok, Req}.
-
 
 
 
@@ -253,9 +242,9 @@ parse_params_fields([], Map) ->
 parse_params_fields([Field|Rest], Map) ->
     Map2 = case binary:split(Field, <<":">>) of
         [Field2] ->
-            Map#{Field2 => <<>>};
+            Map#{to_field(Field2) => <<>>};
         [Field2, Value] ->
-            Map#{Field2 => Value}
+            Map#{to_field(Field2) => Value}
     end,
     parse_params_fields(Rest, Map2).
 
@@ -349,12 +338,17 @@ parse_params_sort([], Map) ->
 parse_params_sort([Field|Rest], Map) ->
     Map2 = case binary:split(Field, <<":">>) of
         [Field2] ->
-            Map#{Field2 => <<>>};
+            Map#{to_field(Field2) => <<"asc">>};
         [Prefix, Field2] ->
-            Map#{Field2 => Prefix}
+            Map#{to_field(Field2) => Prefix}
     end,
     parse_params_sort(Rest, Map2).
 
+
+%% @private Adds "data." at head it not there
+to_field(<<"data.", _/binary>>=Field) -> Field;
+to_field(<<"metadata.", _/binary>>=Field) -> Field;
+to_field(Field) -> <<"data.", Field/binary>>.
 
 
 %%%% @private

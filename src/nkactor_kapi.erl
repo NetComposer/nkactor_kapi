@@ -75,11 +75,14 @@ http_request(SrvId, Method, Path, Req) ->
 %% calling callback actor_api_pre_search/2, and then
 %% actor_api_post_request/2 to adapt the response to API's format
 -spec request(nkactor:request()) ->
-    nkactor_request:reply().
+    {ok|created, map(), nkactor:request()} |
+    {status, map(), nkactor:request()} |
+    {error, map(), nkactor:request()} |
+    {raw, {CT::binary(), Body::binary()}, nkactor:request()}.
 
 request(Req) ->
     Req2 = Req#{class=>nkactor_kapi},
-    case maps:get(verb, Req2, get) of
+    Reply = case maps:get(verb, Req2, get) of
         list ->
             Req3 = nkactor_kapi_parse:search_params(Req2),
             case nkactor_request:request(Req3) of
@@ -90,42 +93,42 @@ request(Req) ->
                     Other
             end;
         Verb when Verb==create; Verb==update ->
-            % Extract request fields from body, checks for inconsistency
-            % and changes body's format
             case nkactor_kapi_parse:pre_request(Req2) of
                 {ok, Req3} ->
-                    % actor_to_external will be called if necessary
                     nkactor_request:request(Req3);
-                {error, Error, Req3} ->
-                    {error, Error, Req3}
+                {error, Error} ->
+                    {error, Error, Req2}
             end;
         _ ->
+            % actor_from_external and actor_to_external will be called if necessary
             nkactor_request:request(Req2)
-    end.
+    end,
+    reply(Reply).
 
 
 %% @doc Process an actor API request, but after adapting the actor
 %% calling callback actor_api_pre_search/2, and then
 %% actor_api_post_request/2 to adapt the response to API's format
 -spec search(nkactor:request()) ->
-    nkactor_request:reply().
+    {ok, map(), nkactor:request()} |
+    {error, map(), nkactor:request()}.
 
 search(#{srv:=SrvId, verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
-    Req2 = Req#{class => nkactor_search},
-    case nkactor_kapi_parse:search_opts(Req2) of
+    Req2 = Req#{class => nkactor_ksearch},
+    Reply = case nkactor_kapi_parse:search_opts(Req2) of
         {ok, Opts} ->
             case nkactor_request:pre_request(Req2) of
                 {ok, Req3} ->
                     Spec1 = maps:get(body, Req2, #{}),
                     Spec2 = maps:without([apiVersion, <<"apiVersion">>, kind, <<"kind">>], Spec1),
-                    Reply = case Verb of
+                    ReqReply = case Verb of
                         list ->
                             case nkactor:search_actors(SrvId, Spec2, Opts) of
                                 {ok, ActorList, Meta} ->
-                                    ActorList2 = [nkactor_actor:to_external(Actor, Req) || Actor <- ActorList],
-                                    {ok, Meta#{items=>ActorList2}, Req3};
+                                    ActorList2 = [nkactor_actor:to_external(Actor, Req3) || Actor <- ActorList],
+                                    reply({ok, Meta#{items=>ActorList2}, Req3});
                                 {error, Error} ->
-                                    {error, Error, Req3}
+                                    reply({error, Error, Req3})
                             end;
                         deletecollection ->
                             case nkactor:delete_multi(SrvId, Spec2, Opts) of
@@ -135,16 +138,58 @@ search(#{srv:=SrvId, verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
                                     {error, Error, Req3}
                             end
                     end,
-                    nkactor_request:post_request(Reply, Req2);
+                    nkactor_request:post_request(ReqReply, Req2);
                 {error, Error, Req3} ->
                     {error, Error, Req3}
             end;
         {error, Error} ->
             {error, Error, Req2}
-    end;
+    end,
+    reply(Reply);
 
 search(Req) ->
-    {error, verb_not_allowed, Req}.
+    reply({error, verb_not_allowed, Req}).
 
+
+
+%% @private
+reply({ok, Data, Req}) ->
+    {ok, Data, Req};
+
+reply({created, Data, Req}) ->
+    {created, Data, Req};
+
+reply({status, Status, #{srv:=SrvId}=Req}) ->
+    Status2 = nkactor_kapi_lib:status(SrvId, Status),
+    {status, Status2, Req};
+
+reply({error, {field_invalid, Field}, #{srv:=SrvId}=Req}) ->
+    Status2 = nkactor_kapi_lib:error(SrvId, {field_invalid, field(SrvId, Field)}),
+    {error, Status2, Req};
+
+reply({error, {field_missing, Field}, #{srv:=SrvId}=Req}) ->
+    Status2 = nkactor_kapi_lib:error(SrvId, {field_missing, field(SrvId, Field)}),
+    {error, Status2, Req};
+
+reply({error, {field_unknown, Field}, #{srv:=SrvId}=Req}) ->
+    Status2 = nkactor_kapi_lib:error(SrvId, {field_unknown, field(SrvId, Field)}),
+    {error, Status2, Req};
+
+reply({error, Error, #{srv:=SrvId}=Req}) ->
+    Status2 = nkactor_kapi_lib:error(SrvId, Error),
+    {error, Status2, Req};
+
+reply({raw, {CT, Bin}, Req}) ->
+    {raw, {CT, Bin}, Req}.
+
+
+%% @private
+field(_SrvId, <<"group">>) -> <<"apiVersion">>;
+field(_SrvId, <<"resource">>) -> <<"kind">>;
+field(_SrvId, <<"name">>) -> <<"metadata.name">>;
+field(_SrvId, <<"namespace">>) -> <<"metadata.namespace">>;
+field(_SrvId, <<"uid">>) -> <<"metadata.uid">>;
+field(_SrvId, <<"data.", Rest/binary>>) -> Rest;
+field(_SrvId, Field) -> Field.
 
 

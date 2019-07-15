@@ -23,7 +23,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([status/1]).
 -export([api_get_groups/2, api_get_paths/2]).
--export([actor_id/2, actor_config/1]).
+-export([actor_id/2, actor_fields_trans/1]).
 -export([actor_from_external/5, actor_to_external/5]).
 
 -include("nkactor_kapi.hrl").
@@ -69,10 +69,20 @@ api_get_groups(_SrvId, GroupsAcc) ->
     GroupsAcc.
 
 
-%% @doc
-actor_config(#{fields_trans:=FieldTrans}=Config) ->
-    FieldTrans2 = FieldTrans#{<<"metadata.resourceVersion">> => <<"metadata.hash">>},
-    {continue, [Config#{fields_trans:=FieldTrans2}]}.
+%% @doc Called by config to get fields that should be translated to another field for all actors
+-spec actor_fields_trans(#{atom() => atom()}) ->
+    #{atom() => atom()}.
+
+actor_fields_trans(Map) ->
+    Map2 = Map#{
+        apiVersion => group,
+        kind => 'metadata.kind',
+        'metadata.name' => name,
+        'metadata.namespace' => namespace,
+        'metadata.uid' => uid,
+        'metadata.resourceVersion' => 'metadata.hash'
+    },
+    {continue, [Map2]}.
 
 
 %% @doc
@@ -102,39 +112,8 @@ actor_id(_SrvId, _Parts) ->
                           nkactor:actor(), nkactor_request:request()) ->
     {ok, nkactor:actor()} | {error, term()}.
 
-actor_from_external(nkactor_kapi, Group, Res, Actor, Req) ->
-    Data1 = maps:get(data, Actor, #{}),
-    Data2 = case maps:find(<<"spec">>, Actor) of
-        {ok, DataSpec1} ->
-            Data1#{<<"spec">> => DataSpec1};
-        error ->
-            Data1
-    end,
-    Data3 = case maps:find(spec, Actor) of
-        {ok, DataSpec2} ->
-            Data2#{<<"spec">> => DataSpec2};
-        error ->
-            Data2
-    end,
-    Data4 = case maps:find(<<"data">>, Actor) of
-        {ok, DataData1} ->
-            Data3#{<<"data">> => DataData1};
-        error ->
-            Data3
-    end,
-    Data5 = case maps:find(data, Actor) of
-        {ok, DataData2} ->
-            Data4#{<<"data">> => DataData2};
-        error ->
-            Data4
-    end,
-    Actor2 = maps:without([<<"spec">>, spec, <<"data">>, data], Actor),
-    Actor3 = Actor2#{data => Data5},
-    {continue, [nkactor_kapi, Group, Res, Actor3, Req]};
-
-actor_from_external(_Class, _Group, _Res, _ApiActor, _Req) ->
+actor_from_external(_Class, _Group, _Res, _Actor, _Req) ->
     continue.
-
 
 
 %% @doc API modules must implement this take the chance to modify the resulting actor
@@ -143,10 +122,8 @@ actor_from_external(_Class, _Group, _Res, _ApiActor, _Req) ->
                         nkactor:actor(), nkactor_request:request()) ->
     map().
 
-actor_to_external(nkactor_kapi, _Group, _Res, Actor, Req) ->
-    nkactor_kapi_unparse:actor_to_api_actor(Actor, Req);
-
-actor_to_external(nkactor_search, _Group, _Res, Actor, Req) ->
+actor_to_external(Class, _Group, _Res, Actor, Req)
+        when Class==nkactor_kapi; Class==nkactor_ksearch ->
     nkactor_kapi_unparse:actor_to_api_actor(Actor, Req);
 
 actor_to_external(_Class, _Group, _Res, _Actor, _Req) ->
