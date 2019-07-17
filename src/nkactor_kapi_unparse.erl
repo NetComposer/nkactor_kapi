@@ -22,7 +22,7 @@
 -module(nkactor_kapi_unparse).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
--export([actor_to_api_actor/2, list_to_api_list/2, search/2]).
+-export([to_external/2, list_to_api_list/2]).
 
 -include_lib("nkserver/include/nkserver.hrl").
 
@@ -32,10 +32,26 @@
 %% ===================================================================
 
 
+
+
 %% @doc
-actor_to_api_actor(Actor, Req) ->
+to_external(SrvId, #{group:=Group, resource:=Res}=Actor) ->
+    Syntax = ?CALL_SRV(SrvId, actor_kapi_unparse, [Group, Res]),
+    {ok, Actor2} = nklib_syntax:parse_all(Actor, Syntax),
+    actor_to_api_actor(Actor2).
+
+
+%% @doc
+actor_to_api_actor(Actor) ->
     case Actor of
-        #{uid:=UID, group:=Group, resource:=_, name:=Name, namespace:=Namespace} ->
+        #{
+            uid := UID,
+            group := Group,
+            resource := _,
+            name := Name,
+            namespace := Namespace,
+            metadata := Metadata
+        } ->
             {ok, ApiActor, _} = nklib_syntax:parse(Actor, actor_to_api_actor_syntax()),
             Data1 = maps:get(data, Actor, #{}),
             Data2 = [{to_bin(K), V} || {K, V} <- maps:to_list(Data1)],
@@ -55,7 +71,7 @@ actor_to_api_actor(Actor, Req) ->
                 <<"name">> => Name,
                 <<"namespace">> => Namespace
             },
-            Vsn = maps:get(vsn, Req, <<>>),
+            Vsn = maps:get(vsn, Metadata, <<>>),
             ApiActor3 = ApiActor2#{
                 <<"apiVersion">> => <<Group/binary, $/, Vsn/binary>>,
                 <<"kind">> => Kind,
@@ -63,7 +79,6 @@ actor_to_api_actor(Actor, Req) ->
             },
             ApiActor3;
         _ ->
-            lager:error("NKLOG A2 ~p", [Actor]),
             Actor
     end.
 
@@ -72,6 +87,7 @@ actor_to_api_actor(Actor, Req) ->
 actor_to_api_actor_syntax() ->
     #{
         metadata => {'__key', <<"metadata">>, #{
+            vsn => ignore,
             kind => ignore,
             subtype => {'__key', <<"subtype">>},
             hash => {'__key', <<"resourceVersion">>},
@@ -85,8 +101,14 @@ actor_to_api_actor_syntax() ->
             links => {'__key', <<"links">>},
             annotations => {'__key', <<"annotations">>},
             is_enabled => {'__key', <<"isEnabled">>},
-            in_alarm => {'__key', <<"inAlaram">>},
-            alarms => {'__key', <<"alarms">>},
+            in_alarm => {'__key', <<"inAlarm">>},
+            alarms => {'__key', <<"alarms">>, {list, #{
+                class => {'__key', <<"class">>},
+                code => {'__key', <<"code">>},
+                last_time => {'__key', <<"lastTime">>},
+                message => {'__key', <<"message">>},
+                meta => {'__key', <<"meta">>}
+            }}},
             next_status_time => {'__key', <<"nextStatusTime">>},
             description => {'__key', <<"description">>},
             trace_id => {'__key', <<"trace_id">>}
@@ -120,13 +142,6 @@ list_to_api_list(List, Req) ->
         %% <<"resourceVersion">,
         %% <<"selfLink">>
     }.
-
-
-%% @doc
-search(#{items:=Items}=Data, Req) ->
-    % Search uses its own request processing, so no call to to_external
-    Actors = [nkactor_actor:to_external(Actor, Req) || Actor <- Items],
-    Data#{items:=Actors}.
 
 
 

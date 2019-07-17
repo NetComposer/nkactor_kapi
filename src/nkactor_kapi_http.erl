@@ -38,25 +38,6 @@
 %% ===================================================================
 
 
-
-%%request(SrvId, Vsn, #{verb:=Verb}=ApiReq) ->
-%%    lager:error("NKLOG CALL REQUEST"),
-%%    case nkactor_request:request(ApiReq) of
-%%        {ok, Data, ApiReq2} when Verb==get ->
-%%            ApiActor = nkactor_core_kapi_request:actor_to_api_actor(SrvId, Vsn, Data),
-%%            {ok, ApiActor, ApiReq2};
-%%        {created, Data, ApiReq2} ->
-%%            ApiActor = nkactor_core_kapi_request:actor_to_api_actor(SrvId, Vsn, Data),
-%%            {ok, ApiActor, ApiReq2};
-%%        {raw, {CT, Body}, ApiReq2} ->
-%%            {raw, {CT, Body}, ApiReq2};
-%%        {status, Status, ApiReq2} ->
-%%            {status, Status, ApiReq2};
-%%        {error, Error, ApiReq2} ->
-%%            {error, Error, ApiReq2}
-%%    end.
-
-
 %% @private
 request(ActorSrvId, Verb, Path, Req) ->
     set_debug(ActorSrvId),

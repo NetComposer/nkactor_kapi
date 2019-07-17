@@ -32,6 +32,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
 -export([http_request/4, request/1, search/1]).
+-export([get_fields_trans/1, get_fields_rev/1]).
 -export_type([api_vsn/0, kind/0]).
 
 -include_lib("nkserver/include/nkserver.hrl").
@@ -81,29 +82,39 @@ http_request(SrvId, Method, Path, Req) ->
     {raw, {CT::binary(), Body::binary()}, nkactor:request()}.
 
 request(Req) ->
-    Req2 = Req#{class=>nkactor_kapi},
-    Reply = case maps:get(verb, Req2, get) of
-        list ->
-            Req3 = nkactor_kapi_parse:search_params(Req2),
-            case nkactor_request:request(Req3) of
-                {ok, Data, Req4} ->
-                    Data2 = nkactor_kapi_unparse:list_to_api_list(Data, Req4),
-                    {ok, Data2, Req4};
-                Other ->
-                    Other
-            end;
-        Verb when Verb==create; Verb==update ->
-            case nkactor_kapi_parse:pre_request(Req2) of
+    % We need to update body, in case it provides group, resource, etc.
+    Reply = case nkactor_kapi_parse:req_actor(Req) of
+        {ok, Req2} ->
+            % Body is updated to standard format, but no data or metadata processing
+            case nkactor_request:pre_request(Req2) of
                 {ok, Req3} ->
-                    nkactor_request:request(Req3);
-                {error, Error} ->
-                    {error, Error, Req2}
+                    #{
+                        verb := Verb,
+                        srv := SrvId,
+                        group := Group,
+                        resource := Res,
+                        subresource := SubRes
+                    } = Req3,
+                    PreArgs = [Verb, Group, Res, SubRes, Req3],
+                    % Convert data and metadata
+                    case ?CALL_SRV(SrvId, actor_kapi_pre_request, PreArgs) of
+                        {ok, Req4} ->
+                            Reply1 = nkactor_request:do_request(Req4),
+                            Reply2 = nkactor_request:post_request(Reply1, Req4),
+                            PostArgs = [Verb, Group, Res, SubRes, Reply2],
+                            % Convert back data and metadata
+                            ?CALL_SRV(SrvId, actor_kapi_post_request, PostArgs);
+                        {error, Error, Req4} ->
+                            {error, Error, Req4}
+                    end;
+                {error, Error, Req3} ->
+                    {error, Error, Req3}
             end;
-        _ ->
-            % actor_from_external and actor_to_external will be called if necessary
-            nkactor_request:request(Req2)
+        {error, Error, Req2} ->
+            {error, Error, Req2}
     end,
     reply(Reply).
+
 
 
 %% @doc Process an actor API request, but after adapting the actor
@@ -114,42 +125,65 @@ request(Req) ->
     {error, map(), nkactor:request()}.
 
 search(#{srv:=SrvId, verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
-    Req2 = Req#{class => nkactor_ksearch},
-    Reply = case nkactor_kapi_parse:search_opts(Req2) of
+    Reply = case nkactor_kapi_parse:search_opts(Req) of
         {ok, Opts} ->
-            case nkactor_request:pre_request(Req2) of
-                {ok, Req3} ->
+            case nkactor_request:pre_request(Req) of
+                {ok, Req2} ->
                     Spec1 = maps:get(body, Req2, #{}),
                     Spec2 = maps:without([apiVersion, <<"apiVersion">>, kind, <<"kind">>], Spec1),
                     ReqReply = case Verb of
                         list ->
                             case nkactor:search_actors(SrvId, Spec2, Opts) of
                                 {ok, ActorList, Meta} ->
-                                    ActorList2 = [nkactor_actor:to_external(Actor, Req3) || Actor <- ActorList],
-                                    reply({ok, Meta#{items=>ActorList2}, Req3});
+                                    ActorList2 = lists:map(
+                                        fun(Actor) ->
+                                            nkactor_kapi_unparse:to_external(SrvId, Actor)
+                                        end,
+                                        ActorList),
+                                    reply({ok, Meta#{items=>ActorList2}, Req2});
                                 {error, Error} ->
-                                    reply({error, Error, Req3})
+                                    reply({error, Error, Req2})
                             end;
                         deletecollection ->
                             case nkactor:delete_multi(SrvId, Spec2, Opts) of
                                 {ok, Meta} ->
-                                    {ok, Meta, Req3};
+                                    {ok, Meta, Req2};
                                 {error, Error} ->
-                                    {error, Error, Req3}
+                                    {error, Error, Req2}
                             end
                     end,
                     nkactor_request:post_request(ReqReply, Req2);
-                {error, Error, Req3} ->
-                    {error, Error, Req3}
+                {error, Error, Req2} ->
+                    {error, Error, Req2}
             end;
         {error, Error} ->
-            {error, Error, Req2}
+            {error, Error, Req}
     end,
     reply(Reply);
 
 search(Req) ->
     reply({error, verb_not_allowed, Req}).
 
+
+
+
+%% ===================================================================
+%% Internal
+%% ===================================================================
+
+
+%% @doc
+get_fields_trans(SrvId) ->
+    nklib_util:do_config_get({nkactor_kapi_fields_trans, SrvId}).
+
+%% @doc
+get_fields_rev(SrvId) ->
+    nklib_util:do_config_get({nkactor_kapi_fields_rev, SrvId}).
+
+%% @private
+rev_field(SrvId, Field) ->
+    %lager:error("NKLOG REV ~p", [{SrvId, Field}]),
+    maps:get(Field, get_fields_rev(SrvId), Field).
 
 
 %% @private
@@ -164,15 +198,15 @@ reply({status, Status, #{srv:=SrvId}=Req}) ->
     {status, Status2, Req};
 
 reply({error, {field_invalid, Field}, #{srv:=SrvId}=Req}) ->
-    Status2 = nkactor_kapi_lib:error(SrvId, {field_invalid, field(SrvId, Field)}),
+    Status2 = nkactor_kapi_lib:error(SrvId, {field_invalid, rev_field(SrvId, Field)}),
     {error, Status2, Req};
 
 reply({error, {field_missing, Field}, #{srv:=SrvId}=Req}) ->
-    Status2 = nkactor_kapi_lib:error(SrvId, {field_missing, field(SrvId, Field)}),
+    Status2 = nkactor_kapi_lib:error(SrvId, {field_missing, rev_field(SrvId, Field)}),
     {error, Status2, Req};
 
 reply({error, {field_unknown, Field}, #{srv:=SrvId}=Req}) ->
-    Status2 = nkactor_kapi_lib:error(SrvId, {field_unknown, field(SrvId, Field)}),
+    Status2 = nkactor_kapi_lib:error(SrvId, {field_unknown, rev_field(SrvId, Field)}),
     {error, Status2, Req};
 
 reply({error, Error, #{srv:=SrvId}=Req}) ->
@@ -183,13 +217,5 @@ reply({raw, {CT, Bin}, Req}) ->
     {raw, {CT, Bin}, Req}.
 
 
-%% @private
-field(_SrvId, <<"group">>) -> <<"apiVersion">>;
-field(_SrvId, <<"resource">>) -> <<"kind">>;
-field(_SrvId, <<"name">>) -> <<"metadata.name">>;
-field(_SrvId, <<"namespace">>) -> <<"metadata.namespace">>;
-field(_SrvId, <<"uid">>) -> <<"metadata.uid">>;
-field(_SrvId, <<"data.", Rest/binary>>) -> Rest;
-field(_SrvId, Field) -> Field.
 
 

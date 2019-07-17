@@ -22,7 +22,7 @@
 -module(nkactor_kapi_parse).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
--export([pre_request/1, search_params/1, search_opts/1]).
+-export([req_actor/1, from_external/2, search_params/1, search_opts/1]).
 
 -include_lib("nkserver/include/nkserver.hrl").
 
@@ -32,7 +32,23 @@
 %% ===================================================================
 
 %% @doc Converts body to a valid actor and checks request
-pre_request(#{body:=Actor}=Req) ->
+%% No data or metadata processing
+req_actor(#{body:=Actor}=Req) ->
+    Verb = maps:get(verb, Req, get),
+    SubRes = maps:get(subresource, Req, <<>>),
+    case (Verb==create orelse Verb==update) andalso SubRes==<<>> of
+        true ->
+            do_req_actor(Actor, Req);
+        _ ->
+            {ok, Req}
+    end;
+
+req_actor(Req) ->
+    {ok, Req}.
+
+
+%% @private
+do_req_actor(Actor, Req) ->
     try
         Syntax = #{
             apiVersion => binary,
@@ -40,8 +56,8 @@ pre_request(#{body:=Actor}=Req) ->
             metadata => #{
                 uid => binary,
                 name => binary,
-                namespace => binary,
-                resourceVersion => {'__key', hash}
+                namespace => binary
+                %resourceVersion => {'__key', hash}
             }
         },
         Parsed = case nklib_syntax:parse_all(Actor, Syntax) of
@@ -62,7 +78,10 @@ pre_request(#{body:=Actor}=Req) ->
             #{apiVersion:=ApiVersion} ->
                 case nkactor_kapi_lib:get_group_vsn(ApiVersion) of
                     {Group, Vsn} ->
-                        Actor1#{group => Group, vsn => Vsn};
+                        Actor1#{
+                            group => Group,
+                            metadata := MetaFields#{vsn => Vsn}
+                        };
                     error ->
                         throw({resource_invalid, apiVersion})
                 end;
@@ -99,31 +118,42 @@ pre_request(#{body:=Actor}=Req) ->
             _ ->
                 Actor2
         end,
-        % This will also be checked later, but error info (fields) would be different
-%%        case {Actor3, Req} of
-%%            {#{group:=G1}, #{group:=G2}} when G1 /= G2 ->
-%%                throw({field_invalid, <<"apiVersion">>});
-%%            {#{resource:=R1}, #{resource:=R2}} when R1 /= R2 ->
-%%                lager:error("NKLOG R1 R2 ~p", []),
-%%                throw({field_invalid, <<"kind">>});
-%%            {#{name:=N1}, #{name:=N2}} when N1 /= N2 ->
-%%                throw({field_invalid, <<"metadata.name">>});
-%%            {#{namespace:=S1}, #{namespace:=S2}} when S1 /= S2 ->
-%%                throw({field_invalid, <<"metadata.namespace">>});
-%%            {#{uid:=U1}, #{uid:=U2}} when U1 /= U2 ->
-%%                throw({field_invalid, <<"metadata.uid">>});
-%%            _ ->
-%%                ok
-%%        end,
         {ok, Req#{body:=Actor3}}
     catch
         throw:Throw ->
-            {error, Throw}
-    end;
+            {error, Throw, Req}
+    end.
 
-pre_request(Req) ->
-    {ok, Req}.
 
+%% @doc
+from_external(SrvId, #{group:=Group, resource:=Res}=Actor) ->
+    Actor2 = actor_metadata(Actor),
+    Syntax = ?CALL_SRV(SrvId, actor_kapi_parse, [Group, Res]),
+    nklib_syntax:parse_all(Actor2, Syntax).
+
+
+%% @doc
+actor_metadata(Actor) when is_map(Actor) ->
+    Syntax = #{
+        metadata => #{
+            resourceVersion => {'__key', hash},
+            creationTime => {'__key', creation_time},
+            updateTime => {'__key', update_time},
+            isEnabled => {'__key', is_enabled},
+            isActive => {'__key', is_active},
+            expiresTime => {'__key', expires_time},
+            inAlarm => {'__key', in_alarm},
+            alarms => {list, #{
+                lastTime => {'__key', last_time}
+            }},
+            nextStatusTime => {'__key', next_status_time}
+        }
+    },
+    {ok, Parsed} = nklib_syntax:parse_all(Actor, Syntax),
+    Parsed;
+
+actor_metadata(Actor) ->
+    Actor.
 
 
 %% @doc
@@ -134,8 +164,6 @@ search_opts(Req) ->
         apiVersion => binary,
         kind => binary
     },
-    Params1 = maps:get(params, Req, #{}),
-    Params2 = search_params(Params1),
     case nklib_syntax:parse(Body, Syntax) of
         {ok, #{apiVersion:=ApiVersion, kind:=Kind}, _} ->
             case nkactor_kapi_lib:get_group_vsn(ApiVersion) of
@@ -148,9 +176,10 @@ search_opts(Req) ->
                                 Module ->
                                     #{resource:=Res} = nkactor_actor:get_config(SrvId, Module),
                                     Config = nkactor_actor:get_config(SrvId, Module),
-                                    Base = maps:with([fields_filter, fields_sort, fields_trans, fields_type], Config),
+                                    Base = maps:with([fields_filter, fields_sort, fields_type], Config),
                                     Opts = Base#{
-                                        params => Params2,
+                                        params => search_params(Req),
+                                        fields_trans => nkactor_kapi:get_fields_trans(SrvId),
                                         forced_spec => #{
                                             namespace => Namespace,
                                             filter => #{
@@ -173,9 +202,10 @@ search_opts(Req) ->
             case nkactor_kapi_lib:get_group_vsn(ApiVersion) of
                 {Group, _Vsn} ->
                     Config = nkactor_actor:get_common_config(SrvId),
-                    Base = maps:with([fields_filter, fields_sort, fields_trans, fields_type], Config),
+                    Base = maps:with([fields_filter, fields_sort, fields_type], Config),
                     Opts = Base#{
-                        params => Params2,
+                        params => search_params(Req),
+                        fields_trans => nkactor_kapi:get_fields_trans(SrvId),
                         forced_spec => #{
                             namespace => Namespace,
                             filter => #{
@@ -193,9 +223,10 @@ search_opts(Req) ->
             {error, {field_missing, <<"apiVersion">>}};
         {ok, _, _} ->
             Config = nkactor_actor:get_common_config(SrvId),
-            Base = maps:with([fields_filter, fields_sort, fields_trans, fields_type], Config),
+            Base = maps:with([fields_filter, fields_sort, fields_type], Config),
             Opts = Base#{
-                params => Params2,
+                params => search_params(Req),
+                fields_trans => nkactor_kapi:get_fields_trans(SrvId),
                 forced_spec => #{
                     namespace => Namespace
                 }
@@ -208,9 +239,7 @@ search_opts(Req) ->
 
 
 %% @doc Adapts API request to a valid request
-%% - Adds fields_trans (nkactor_kapi_search:field_trans())
-%% - Converts parameters fieldSelector, labelSelector, linkedTo, fts, sort to maps
-search_params(Req) ->
+search_params(#{srv:=SrvId}=Req) ->
     Params = maps:get(params, Req, #{}),
     Syntax = #{
         fieldSelector => {'__key', fields, binary},
@@ -222,7 +251,8 @@ search_params(Req) ->
     },
     {ok, Params2} = nklib_syntax:parse_all(Params, Syntax),
     Params3 = parse_params_fields(Params2),
-    Req#{params => Params3}.
+    Params4 = Params3#{fields_trans => nkactor_kapi:get_fields_trans(SrvId)},
+    Req#{params => Params4}.
 
 
 %% @private

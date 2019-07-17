@@ -23,11 +23,13 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([status/1]).
 -export([api_get_groups/2, api_get_paths/2]).
--export([actor_id/2, actor_fields_trans/1]).
--export([actor_from_external/5, actor_to_external/5]).
+-export([actor_id/2, actor_kapi_fields_trans/1]).
+-export([actor_kapi_pre_request/5, actor_kapi_post_request/5]).
+-export([actor_kapi_parse/2, actor_kapi_unparse/2]).
 
 -include("nkactor_kapi.hrl").
 -include_lib("nkactor/include/nkactor.hrl").
+-include_lib("nkserver/include/nkserver.hrl").
 
 %% ===================================================================
 %% Status & Msgs  Callbacks
@@ -40,9 +42,8 @@ status(_) -> continue.
 
 
 %% ===================================================================
-%% API Callbacks
+%% Implemented API Callbacks
 %% ===================================================================
-
 
 %% @doc Called when the list of base paths of the server is requested
 -spec api_get_paths(nkservice:id(), [binary()]) ->
@@ -69,22 +70,6 @@ api_get_groups(_SrvId, GroupsAcc) ->
     GroupsAcc.
 
 
-%% @doc Called by config to get fields that should be translated to another field for all actors
--spec actor_fields_trans(#{atom() => atom()}) ->
-    #{atom() => atom()}.
-
-actor_fields_trans(Map) ->
-    Map2 = Map#{
-        apiVersion => group,
-        kind => 'metadata.kind',
-        'metadata.name' => name,
-        'metadata.namespace' => namespace,
-        'metadata.uid' => uid,
-        'metadata.resourceVersion' => 'metadata.hash'
-    },
-    {continue, [Map2]}.
-
-
 %% @doc
 actor_id(_SrvId, [<<"apis">>, Group, _Vsn, <<"namespaces">>, Namespace, Resource, Name]) ->
     #actor_id{
@@ -106,28 +91,74 @@ actor_id(_SrvId, _Parts) ->
     continue.
 
 
-%% @doc API modules must implement this to update fields from external version
-%% Core and metadata fields have already being updated from nkactor_kapi:request/1
--spec actor_from_external(nkactor_request:class(), nkactor:group(), nkactor:resource(),
-                          nkactor:actor(), nkactor_request:request()) ->
-    {ok, nkactor:actor()} | {error, term()}.
+%% @doc Called by nkactor_kapi_plugin to generate trans for fields
+-spec actor_kapi_fields_trans(#{atom() => atom()}) ->
+    #{atom() => atom()}.
 
-actor_from_external(_Class, _Group, _Res, _Actor, _Req) ->
-    continue.
+actor_kapi_fields_trans(Map) ->
+    Map#{
+        'apiVersion' => 'group',
+        'kind' => 'metadata.kind',
+        'metadata.creationTime' => 'metadata.creation_time',
+        'metadata.expiresTime' => 'metadata.expires_time',
+        'metadata.inAlarm' => 'metadata.in_alarm',
+        'metadata.isActive' => 'metadata.is_active',
+        'metadata.isEnabled' => 'metadata.is_enabled',
+        'metadata.name' => 'name',
+        'metadata.namespace' => 'namespace',
+        'metadata.nextStatusTime' =>'metadata.next_status_time',
+        'metadata.resourceVersion' => 'metadata.hash',
+        'metadata.uid' => 'uid',
+        'metadata.updateTime' => 'metadata.update_time'
+    }.
 
 
-%% @doc API modules must implement this take the chance to modify the resulting actor
-%% Called from nkactor_kapi:unparse/2
--spec actor_to_external(nkactor_request:class(), nkactor:group(), nkactor:resource(),
-                        nkactor:actor(), nkactor_request:request()) ->
-    map().
+%% @doc
+actor_kapi_pre_request(list, _Group, _Res, <<>>, Req) ->
+    {ok, nkactor_kapi_parse:search_params(Req)};
 
-actor_to_external(Class, _Group, _Res, Actor, Req)
-        when Class==nkactor_kapi; Class==nkactor_ksearch ->
-    nkactor_kapi_unparse:actor_to_api_actor(Actor, Req);
+actor_kapi_pre_request(Verb, _Group, _Res, <<>>, #{srv:=SrvId, body:=Actor}=Req)
+        when (Verb==create orelse Verb==update) andalso is_map(Actor) ->
+    case nkactor_kapi_parse:from_external(SrvId, Actor) of
+        {ok, Actor3} ->
+            {ok, Req#{body:=Actor3}};
+        {error, Error} ->
+            {error, Error, Req}
+    end;
 
-actor_to_external(_Class, _Group, _Res, _Actor, _Req) ->
-    continue.
+actor_kapi_pre_request(_Verb, _Group, _Res, _SubRes, Req) ->
+    {ok, Req}.
+
+
+%% @doc
+actor_kapi_post_request(list, _Group, _Res, <<>>, {ok, Data, #{srv:=SrvId}=Req}) ->
+    #{items:=Items} = Data,
+    Items2 = lists:map(
+        fun(Actor) -> nkactor_kapi_unparse:to_external(SrvId, Actor) end,
+        Items),
+    Data2 = nkactor_kapi_unparse:list_to_api_list(Data#{items:=Items2}, Req),
+    {ok, Data2, Req};
+
+actor_kapi_post_request(_Verb, _Group, _Res, <<>>, {Status, Actor, #{srv:=SrvId}=Req})
+        when Status==ok; Status==created ->
+    Actor2 = nkactor_kapi_unparse:to_external(SrvId, Actor),
+    {Status, Actor2, Req};
+
+actor_kapi_post_request(_Verb, _Group, _Res, _SubRes, Reply) ->
+    Reply.
+
+
+%% @doc
+actor_kapi_parse(_Group, _Resource) ->
+    #{}.
+
+
+%% @doc
+actor_kapi_unparse(_Group, _Resource) ->
+    #{}.
+
+
+
 
 
 

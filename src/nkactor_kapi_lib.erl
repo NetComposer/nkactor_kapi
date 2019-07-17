@@ -256,40 +256,6 @@ expand_api_links([{Id, Type}|Rest], Acc) ->
     expand_api_links(Rest, Acc#{Path => Type}).
 
 
-%%%% @doc Parses an API and makes sure group and vsn are available,
-%%%% from api itself or body's apiVersion
-%%-spec parse_api_request(map()) ->
-%%    {ok, nkdomain_api:request()} | {error, nkservice:msg()}.
-%%
-%%parse_api_request(Api) ->
-%%    case nklib_syntax:parse(Api, api_syntax()) of
-%%        {ok, #{group:=_, vsn:=_}=Api2, _} ->
-%%            {ok, Api2};
-%%        {ok, #{group:=_}, _} ->
-%%            {error, {field_missing, <<"vsn">>}};
-%%        {ok, #{vsn:=_}, _} ->
-%%            {error, {field_missing, <<"group">>}};
-%%        {ok, Api2, _} ->
-%%            Body = maps:get(body, Api2, #{}),
-%%            case
-%%                is_map(Body) andalso
-%%                nklib_syntax:parse(Body, #{apiVersion=>binary})
-%%            of
-%%                {ok, #{apiVersion:=ApiVsn}, _} ->
-%%                    case get_group_vsn(ApiVsn) of
-%%                        {Group, Vsn} ->
-%%                            {ok, Api2#{group=>Group, vsn=>Vsn}};
-%%                        error ->
-%%                            {error, {field_missing, <<"group">>}}
-%%                    end;
-%%                _ ->
-%%                    {error, {field_missing, <<"group">>}}
-%%            end;
-%%        {error, Error} ->
-%%            {error, Error}
-%%    end.
-
-
 %% @private
 to_bin(Term) when is_binary(Term) -> Term;
 to_bin(Term) -> nklib_util:to_binary(Term).
