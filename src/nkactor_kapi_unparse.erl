@@ -38,7 +38,10 @@
 to_external(SrvId, #{group:=Group, resource:=Res}=Actor) ->
     Syntax = ?CALL_SRV(SrvId, actor_kapi_unparse, [Group, Res]),
     {ok, Actor2} = nklib_syntax:parse_all(Actor, Syntax),
-    actor_to_api_actor(Actor2).
+    actor_to_api_actor(Actor2);
+
+to_external(_SrvId, Other) ->
+    Other.
 
 
 %% @doc

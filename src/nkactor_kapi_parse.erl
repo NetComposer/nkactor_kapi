@@ -22,7 +22,7 @@
 -module(nkactor_kapi_parse).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
--export([req_actor/1, from_external/2, search_params/1, search_opts/1]).
+-export([req_actor/1, from_external/4, search_params/1, search_opts/1]).
 
 -include_lib("nkserver/include/nkserver.hrl").
 
@@ -77,9 +77,9 @@ do_req_actor(Actor, Req) ->
         Actor2 = case Parsed of
             #{apiVersion:=ApiVersion} ->
                 case nkactor_kapi_lib:get_group_vsn(ApiVersion) of
-                    {Group, Vsn} ->
+                    {ApiGroup, Vsn} ->
                         Actor1#{
-                            group => Group,
+                            group => ApiGroup,
                             metadata := MetaFields#{vsn => Vsn}
                         };
                     error ->
@@ -90,31 +90,42 @@ do_req_actor(Actor, Req) ->
         end,
         Actor3 = case Parsed of
             #{kind:=Kind} ->
-                case Actor2 of
+                Group = case Actor2 of
                     #{group:=ActorGroup} ->
-                        Namespace = case maps:find(namespace, Actor2) of
-                            {ok, ActorNamespace} ->
-                                ActorNamespace;
-                            false ->
-                                maps:get(namespace, Req, <<>>)
-                        end,
-                        SrvId = case nkactor_namespace:find_service(Namespace) of
-                            {ok, SrvId0} ->
-                                SrvId0;
-                            {error, SrvError} ->
-                                throw(SrvError)
-                        end,
-                        Res = case nkactor_actor:get_module(SrvId, ActorGroup, {camel, Kind}) of
-                            undefined ->
-                                throw({resource_invalid, kind});
-                            Module ->
-                                #{resource:=Res0} = nkactor_actor:get_config(SrvId, Module),
-                                Res0
-                        end,
-                        Actor2#{resource => Res};
+                        ActorGroup;
                     _ ->
-                        throw({field_missing, <<"apiVersion">>})
-                end;
+                        case nklib_syntax:parse(Req, #{group=>binary}) of
+                            {ok, #{group:=ReqGroup}, _} ->
+                                ReqGroup;
+                            _ ->
+                                throw({field_missing, <<"apiVersion">>})
+                        end
+                end,
+                Namespace = case maps:find(namespace, Actor2) of
+                    {ok, ActorNamespace} ->
+                        ActorNamespace;
+                    error ->
+                        case nklib_syntax:parse(Req, #{namespace=>binary}) of
+                            {ok, #{namespace:=ReqNamespace}, _} ->
+                                ReqNamespace;
+                            _ ->
+                                <<>>
+                        end
+                end,
+                SrvId = case nkactor_namespace:find_service(Namespace) of
+                    {ok, SrvId0} ->
+                        SrvId0;
+                    {error, SrvError} ->
+                        throw(SrvError)
+                end,
+                Res = case nkactor_actor:get_module(SrvId, Group, {camel, Kind}) of
+                    undefined ->
+                        throw({resource_invalid, kind});
+                    Module ->
+                        #{resource:=Res0} = nkactor_actor:get_config(SrvId, Module),
+                        Res0
+                end,
+                Actor2#{resource => Res};
             _ ->
                 Actor2
         end,
@@ -126,7 +137,7 @@ do_req_actor(Actor, Req) ->
 
 
 %% @doc
-from_external(SrvId, #{group:=Group, resource:=Res}=Actor) ->
+from_external(SrvId, Group, Res, Actor) ->
     Actor2 = actor_metadata(Actor),
     Syntax = ?CALL_SRV(SrvId, actor_kapi_parse, [Group, Res]),
     nklib_syntax:parse_all(Actor2, Syntax).
@@ -245,7 +256,7 @@ search_params(#{srv:=SrvId}=Req) ->
         fieldSelector => {'__key', fields, binary},
         labelSelector => {'__key', labels, binary},
         linkedTo => {'__key', links, binary},
-        getTotals => {'__key', get_totals, boolean},
+        getTotal => {'__key', get_total, boolean},
         fts => binary,
         sort => binary
     },

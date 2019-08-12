@@ -32,7 +32,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
 -export([http_request/4, request/1, search/1]).
--export([get_fields_trans/1, get_fields_rev/1]).
+-export([get_fields_trans/1, get_fields_rev/1, rev_field/2]).
 -export_type([api_vsn/0, kind/0]).
 
 -include_lib("nkserver/include/nkserver.hrl").
@@ -182,8 +182,14 @@ get_fields_rev(SrvId) ->
 
 %% @private
 rev_field(SrvId, Field) ->
-    %lager:error("NKLOG REV ~p", [{SrvId, Field}]),
-    maps:get(Field, get_fields_rev(SrvId), Field).
+    case maps:get(Field, get_fields_rev(SrvId), Field) of
+        <<"data.", Field2/binary>> ->
+            lager:error("NKLOG F1 ~s -> ~s", [Field, Field2]),
+            Field2;
+        Field2 ->
+            lager:error("NKLOG F2 ~s -> ~s", [Field, Field2]),
+            Field2
+    end.
 
 
 %% @private
@@ -207,6 +213,10 @@ reply({error, {field_missing, Field}, #{srv:=SrvId}=Req}) ->
 
 reply({error, {field_unknown, Field}, #{srv:=SrvId}=Req}) ->
     Status2 = nkactor_kapi_lib:error(SrvId, {field_unknown, rev_field(SrvId, Field)}),
+    {error, Status2, Req};
+
+reply({error, {updated_invalid_field, Field}, #{srv:=SrvId}=Req}) ->
+    Status2 = nkactor_kapi_lib:error(SrvId, {updated_invalid_field, rev_field(SrvId, Field)}),
     {error, Status2, Req};
 
 reply({error, Error, #{srv:=SrvId}=Req}) ->

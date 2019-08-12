@@ -45,6 +45,33 @@ status(_) -> continue.
 %% Implemented API Callbacks
 %% ===================================================================
 
+%% @doc
+actor_id(_SrvId, [<<"apis">>, Group, _Vsn, <<"namespaces">>, Namespace, Resource, Name]) ->
+    #actor_id{
+        group = Group,
+        resource = Resource,
+        namespace = Namespace,
+        name = Name
+    };
+
+actor_id(SrvId, [<<"apis">>, Group, _Vsn, Resource, Name]) ->
+    #actor_id{
+        group = Group,
+        resource = Resource,
+        namespace = nkactor:base_namespace(SrvId),
+        name = Name
+    };
+
+actor_id(_SrvId, _Parts) ->
+    continue.
+
+
+
+%% ===================================================================
+%% Offered
+%% ===================================================================
+
+
 %% @doc Called when the list of base paths of the server is requested
 -spec api_get_paths(nkservice:id(), [binary()]) ->
     [binary()].
@@ -70,28 +97,9 @@ api_get_groups(_SrvId, GroupsAcc) ->
     GroupsAcc.
 
 
-%% @doc
-actor_id(_SrvId, [<<"apis">>, Group, _Vsn, <<"namespaces">>, Namespace, Resource, Name]) ->
-    #actor_id{
-        group = Group,
-        resource = Resource,
-        namespace = Namespace,
-        name = Name
-    };
-
-actor_id(SrvId, [<<"apis">>, Group, _Vsn, Resource, Name]) ->
-    #actor_id{
-        group = Group,
-        resource = Resource,
-        namespace = nkactor:base_namespace(SrvId),
-        name = Name
-    };
-
-actor_id(_SrvId, _Parts) ->
-    continue.
-
-
 %% @doc Called by nkactor_kapi_plugin to generate trans for fields
+%% They will be use for list operations, search requests and to back-resolve
+%% fields in error reports
 -spec actor_kapi_fields_trans(#{atom() => atom()}) ->
     #{atom() => atom()}.
 
@@ -113,15 +121,20 @@ actor_kapi_fields_trans(Map) ->
     }.
 
 
-%% @doc
+%% @doc Called from nkactor_kapi:request/1 to modify a request before sending it
+%% to the request processor
+-spec actor_kapi_pre_request(nkactor_request:verb(), nkactor:group(), nkactor:resource(),
+                             nkactor:subresource(), nkactor_request:request()) ->
+    {ok, nkactor_request:request()} | {error, term(), nkactor_request:request()}.
+
 actor_kapi_pre_request(list, _Group, _Res, <<>>, Req) ->
     {ok, nkactor_kapi_parse:search_params(Req)};
 
-actor_kapi_pre_request(Verb, _Group, _Res, <<>>, #{srv:=SrvId, body:=Actor}=Req)
+actor_kapi_pre_request(Verb, Group, Res, <<>>, #{srv:=SrvId, body:=Actor}=Req)
         when (Verb==create orelse Verb==update) andalso is_map(Actor) ->
-    case nkactor_kapi_parse:from_external(SrvId, Actor) of
-        {ok, Actor3} ->
-            {ok, Req#{body:=Actor3}};
+    case nkactor_kapi_parse:from_external(SrvId, Group, Res, Actor) of
+        {ok, Actor2} ->
+            {ok, Req#{body:=Actor2}};
         {error, Error} ->
             {error, Error, Req}
     end;
@@ -130,7 +143,12 @@ actor_kapi_pre_request(_Verb, _Group, _Res, _SubRes, Req) ->
     {ok, Req}.
 
 
-%% @doc
+%% @doc Called from nkactor_kapi:request/1 to modify a request reply before
+%% delivering it
+-spec actor_kapi_post_request(nkactor_request:verb(), nkactor:group(), nkactor:resource(),
+    nkactor:subresource(), nkactor_request:reply()) ->
+    nkactor_request:reply().
+
 actor_kapi_post_request(list, _Group, _Res, <<>>, {ok, Data, #{srv:=SrvId}=Req}) ->
     #{items:=Items} = Data,
     Items2 = lists:map(
@@ -139,8 +157,13 @@ actor_kapi_post_request(list, _Group, _Res, <<>>, {ok, Data, #{srv:=SrvId}=Req})
     Data2 = nkactor_kapi_unparse:list_to_api_list(Data#{items:=Items2}, Req),
     {ok, Data2, Req};
 
-actor_kapi_post_request(_Verb, _Group, _Res, <<>>, {Status, Actor, #{srv:=SrvId}=Req})
-        when Status==ok; Status==created ->
+actor_kapi_post_request(get, _Group, _Res, <<>>, {ok, Actor, #{srv:=SrvId}=Req}) ->
+    Actor2 = nkactor_kapi_unparse:to_external(SrvId, Actor),
+    {ok, Actor2, Req};
+
+actor_kapi_post_request(Verb, _Group, _Res, <<>>, {Status, Actor, #{srv:=SrvId}=Req})
+        when (Verb==create orelse Verb==update) andalso
+             (Status==ok orelse Status==created) ->
     Actor2 = nkactor_kapi_unparse:to_external(SrvId, Actor),
     {Status, Actor2, Req};
 
@@ -148,17 +171,21 @@ actor_kapi_post_request(_Verb, _Group, _Res, _SubRes, Reply) ->
     Reply.
 
 
-%% @doc
+%% @doc Called from actor_kapi_pre_request() when a actor needs to be converted to
+%% standard format
+-spec actor_kapi_parse(nkactor:group(), nkactor:resource()) ->
+    nklib_syntax:syntax().
+
 actor_kapi_parse(_Group, _Resource) ->
     #{}.
 
+%% @doc Called from actor_kapi_post_request() when a actor needs to be converted to
+%% api format
+-spec actor_kapi_unparse(nkactor:group(), nkactor:resource()) ->
+    nklib_syntax:syntax().
 
-%% @doc
 actor_kapi_unparse(_Group, _Resource) ->
     #{}.
-
-
-
 
 
 
