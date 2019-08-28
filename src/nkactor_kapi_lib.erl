@@ -143,7 +143,7 @@ status(SrvId, UserStatus, Meta) ->
         <<"message">> => maps:get(info, ExtStatus, <<>>),
         <<"reason">> => maps:get(status, ExtStatus),
         <<"details">> => maps:get(data, ExtStatus, #{}),
-        <<"code">> => maps:get(code, ExtStatus, 500)
+        <<"code">> => maps:get(code, ExtStatus, 400)
     }.
 
 
@@ -171,7 +171,7 @@ error(SrvId, UserStatus, Meta) ->
         <<"message">> => maps:get(info, ExtStatus, <<>>),
         <<"reason">> => maps:get(status, ExtStatus),
         <<"details">> => maps:get(data, ExtStatus, #{}),
-        <<"code">> => maps:get(code, ExtStatus, 500)
+        <<"code">> => maps:get(code, ExtStatus, 400)
     }.
 
 
