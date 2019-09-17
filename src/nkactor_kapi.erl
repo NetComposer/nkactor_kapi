@@ -21,7 +21,7 @@
 %% This plugins adds an external API to nkactor
 %%
 %% When a request comes from nkrest, you call http_request/4
-%% - The url will be parsed and a nkactor_request:request() will be generated
+%% - The url will be parsed and a nkactor:request() will be generated
 %% - nkactor_request:request/1 will be called
 %% - actor_pre_request/3 will be called,
 

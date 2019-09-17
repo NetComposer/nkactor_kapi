@@ -124,8 +124,8 @@ actor_kapi_fields_trans(Map) ->
 %% @doc Called from nkactor_kapi:request/1 to modify a request before sending it
 %% to the request processor
 -spec actor_kapi_pre_request(nkactor_request:verb(), nkactor:group(), nkactor:resource(),
-                             nkactor:subresource(), nkactor_request:request()) ->
-    {ok, nkactor_request:request()} | {error, term(), nkactor_request:request()}.
+                             nkactor:subresource(), nkactor:request()) ->
+    {ok, nkactor:request()} | {error, term(), nkactor:request()}.
 
 actor_kapi_pre_request(list, _Group, _Res, <<>>, Req) ->
     {ok, nkactor_kapi_parse:search_params(Req)};
