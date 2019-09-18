@@ -20,11 +20,16 @@
 
 %% This plugins adds an external API to nkactor
 %%
-%% When a request comes from nkrest, you call http_request/4
-%% - The url will be parsed and a nkactor:request() will be generated
-%% - nkactor_request:request/1 will be called
-%% - actor_pre_request/3 will be called,
-
+%% - When a request comes from nkrest, you call http_request/4, that calls request/1
+%% - You can call request/1 directly
+%%
+%% Important callbacks
+%% - actor_kapi_parse: return syntax to adapt data from kapi to actor
+%% - actor_kapi_unparse: return syntax to adapt actor to kapi
+%% - actor_kapi_pre_request: can preprocess and incoming petition
+%% - actor_kapi_post_request: can modify a request result
+%% - actor_kapi_fields_trans: use it to convert kapi fields to actor fields, and
+%%   the opposite to report errors on fields
 
 
 %% @doc
@@ -59,22 +64,23 @@
 
 
 %% @doc Call this function (from nkrest) to process a new http request
+%% Use ActorSrvId as framework for debug, API calls etc.
 %% It will process the request and call request/1
-
 -spec http_request(nkserver:id(), http_method(), http_path(), http_req()) ->
     http_reply() |
     {redirect, Path::binary(), http_req()} |
     {cowboy_static, cowboy_static:opts()} |
     {cowboy_rest, Callback::module(), State::term()}.
 
-http_request(SrvId, Method, Path, Req) ->
-    nkactor_kapi_http:request(SrvId, Method, Path, Req).
+http_request(ActorSrvId, Method, Path, Req) ->
+    nkactor_kapi_http:request(ActorSrvId, Method, Path, Req).
 
 
-
-%% @doc Process an actor API request, but after adapting the actor
-%% calling callback actor_api_pre_search/2, and then
-%% actor_api_post_request/2 to adapt the response to API's format
+%% @doc Process an actor API request
+%% - First it adapts body for create/update operations
+%% - Calls standard nkactor_request:pre_request/1 and then actor_kapi_pre_request
+%% - Calls standard nkactor_request:do_request/1
+%% - Calls nkactor_request:post_request/1 and then actor_kapi_post_request
 -spec request(nkactor:request()) ->
     {ok|created, map(), nkactor:request()} |
     {status, map(), nkactor:request()} |
@@ -90,13 +96,14 @@ request(Req) ->
                 {ok, Req3} ->
                     #{
                         verb := Verb,
-                        srv := SrvId,
+                        srv := SrvId,           % Associated to namespace
                         group := Group,
                         resource := Res,
                         subresource := SubRes
                     } = Req3,
                     PreArgs = [Verb, Group, Res, SubRes, Req3],
-                    % Convert data and metadata
+                    % For verb 'list', adapts params
+                    % For standard requests, calls nkactor_kapi_parse:from_external/4
                     case ?CALL_SRV(SrvId, actor_kapi_pre_request, PreArgs) of
                         {ok, Req4} ->
                             Reply1 = nkactor_request:do_request(Req4),
@@ -163,7 +170,6 @@ search(#{srv:=SrvId, verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
 
 search(Req) ->
     reply({error, verb_not_allowed, Req}).
-
 
 
 

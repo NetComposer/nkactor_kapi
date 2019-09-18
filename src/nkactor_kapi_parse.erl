@@ -31,8 +31,9 @@
 %% Utilities
 %% ===================================================================
 
-%% @doc Converts body to a valid actor and checks request
-%% No data or metadata processing
+%% @doc In case request has a body, it is verb or create and empty subres
+%% - adapts the body from KAPI format to request format
+%% - it does not adapts data or most of metadata fields
 req_actor(#{body:=Actor}=Req) ->
     Verb = maps:get(verb, Req, get),
     SubRes = maps:get(subresource, Req, <<>>),
@@ -157,6 +158,8 @@ actor_metadata(Actor) when is_map(Actor) ->
             alarms => {list, #{
                 lastTime => {'__key', last_time}
             }},
+            updatedBy => {'__key', updated_by},
+            createdBy => {'__key', created_by},
             nextStatusTime => {'__key', next_status_time}
         }
     },
