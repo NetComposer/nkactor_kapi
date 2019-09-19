@@ -73,7 +73,6 @@
     {cowboy_rest, Callback::module(), State::term()}.
 
 http_request(ActorSrvId, Method, Path, Req) ->
-    lager:error("NKLOG REQ1 ~p", [ActorSrvId]),
     nkactor_kapi_http:request(ActorSrvId, Method, Path, Req).
 
 
