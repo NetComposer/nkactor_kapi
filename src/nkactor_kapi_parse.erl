@@ -31,25 +31,25 @@
 %% Utilities
 %% ===================================================================
 
-%% @doc In case request has a body, it is verb or create and empty subres
+%% @doc
+%% - Adapts standard parameters
+%% In case request has a body, it is verb or create and empty subres
 %% - adapts the body from KAPI format to request format
 %% - it does not adapts data or most of metadata fields
-req_actor(#{body:=Actor}=Req) ->
+req_actor(Req) ->
     Verb = maps:get(verb, Req, get),
     SubRes = maps:get(subresource, Req, <<>>),
-    case (Verb==create orelse Verb==update) andalso SubRes==<<>> of
-        true ->
-            do_req_actor(Actor, Req);
-        _ ->
-            {ok, Req}
-    end;
-
-req_actor(Req) ->
-    {ok, Req}.
+    case params(Verb, SubRes, Req) of
+        {ok, Req2} ->
+            do_req_actor(Verb, SubRes, Req2);
+        {error, Error} ->
+            {error, Error, Req}
+    end.
 
 
 %% @private
-do_req_actor(Actor, Req) ->
+do_req_actor(Verb, <<>>, #{body:=Actor}=Req) when
+        (Verb==create orelse Verb==update) andalso is_map(Actor) ->
     try
         Syntax = #{
             apiVersion => binary,
@@ -134,7 +134,10 @@ do_req_actor(Actor, Req) ->
     catch
         throw:Throw ->
             {error, Throw, Req}
-    end.
+    end;
+
+do_req_actor(_Verb, _SubRes, Req) ->
+    {ok, Req}.
 
 
 %% @doc
@@ -169,6 +172,61 @@ actor_metadata(Actor) when is_map(Actor) ->
 actor_metadata(Actor) ->
     Actor.
 
+%% @doc
+params(list, <<>>, Req) ->
+    case search_params(Req) of
+        {ok, Params2} ->
+            {ok, Req#{params:=Params2}};
+        {error, Error} ->
+            {error, Error}
+    end;
+
+params(Verb, <<>>, #{params:=Params}=Req) ->
+    Syntax = params_syntax(Verb),
+    case nklib_syntax:parse(Params, Syntax) of
+        {ok, Params2, []} ->
+            {ok, Req#{params:=Params2}};
+        {ok, _, [Field|_]} ->
+            {error, {parameter_invalid, Field}};
+        {error, Error} ->
+            {error, Error}
+    end;
+
+params(_Verb, _SubRes, Req) ->
+    {ok, Req}.
+
+
+%% @private
+params_syntax(get) ->
+    #{
+        activate => boolean,
+        consume => boolean,
+        ttl => pos_integer
+    };
+
+params_syntax(create) ->
+    #{
+        activate => boolean,
+        ttl => pos_integer
+    };
+
+params_syntax(update) ->
+    #{
+        activate => boolean,
+        ttl => pos_integer,
+        mergeData => {'__key', merge_data, boolean},
+        allowNameChange => {'__key', allow_name_change, boolean}
+    };
+
+params_syntax(delete) ->
+    #{
+        activate => boolean
+    };
+
+params_syntax(_) ->
+    #{
+    }.
+
 
 %% @doc
 search_opts(Req) ->
@@ -191,20 +249,25 @@ search_opts(Req) ->
                                     #{resource:=Res} = nkactor_actor:get_config(SrvId, Module),
                                     Config = nkactor_actor:get_config(SrvId, Module),
                                     Base = maps:with([fields_filter, fields_sort, fields_type], Config),
-                                    Opts = Base#{
-                                        params => search_params(Req),
-                                        fields_trans => nkactor_kapi:get_fields_trans(SrvId),
-                                        forced_spec => #{
-                                            namespace => Namespace,
-                                            filter => #{
-                                                'and' => [
-                                                    #{field=>group, value=>Group},
-                                                    #{field=>resource, value=>Res}
-                                                ]
-                                            }
-                                        }
-                                    },
-                                    {ok, Opts}
+                                    case search_params(Req) of
+                                        {ok, Params2} ->
+                                            Opts = Base#{
+                                                params => Params2,
+                                                fields_trans => nkactor_kapi:get_fields_trans(SrvId),
+                                                forced_spec => #{
+                                                    namespace => Namespace,
+                                                    filter => #{
+                                                        'and' => [
+                                                            #{field=>group, value=>Group},
+                                                            #{field=>resource, value=>Res}
+                                                        ]
+                                                    }
+                                                }
+                                            },
+                                            {ok, Opts};
+                                        {error, Error} ->
+                                            {error, Error}
+                                    end
                             end;
                         {error, Error} ->
                             {error, Error}
@@ -217,19 +280,24 @@ search_opts(Req) ->
                 {Group, _Vsn} ->
                     Config = nkactor_actor:get_common_config(SrvId),
                     Base = maps:with([fields_filter, fields_sort, fields_type], Config),
-                    Opts = Base#{
-                        params => search_params(Req),
-                        fields_trans => nkactor_kapi:get_fields_trans(SrvId),
-                        forced_spec => #{
-                            namespace => Namespace,
-                            filter => #{
-                                'and' => [
-                                    #{field=>group, value=>Group}
-                                ]
-                            }
-                        }
-                    },
-                    {ok, Opts};
+                    case search_params(Req) of
+                        {ok, Params2} ->
+                            Opts = Base#{
+                                params => Params2,
+                                fields_trans => nkactor_kapi:get_fields_trans(SrvId),
+                                forced_spec => #{
+                                    namespace => Namespace,
+                                    filter => #{
+                                        'and' => [
+                                            #{field=>group, value=>Group}
+                                        ]
+                                    }
+                                }
+                            },
+                            {ok, Opts};
+                        {error, Error} ->
+                            {error, Error}
+                    end;
                 error ->
                     {error, {resource_invalid, ApiVersion}}
             end;
@@ -238,24 +306,32 @@ search_opts(Req) ->
         {ok, _, _} ->
             Config = nkactor_actor:get_common_config(SrvId),
             Base = maps:with([fields_filter, fields_sort, fields_type], Config),
-            Opts = Base#{
-                params => search_params(Req),
-                fields_trans => nkactor_kapi:get_fields_trans(SrvId),
-                forced_spec => #{
-                    namespace => Namespace
-                }
-            },
-            {ok, Opts};
+            case search_params(Req) of
+                {ok, Params2} ->
+                    Opts = Base#{
+                        params => Params2,
+                        fields_trans => nkactor_kapi:get_fields_trans(SrvId),
+                        forced_spec => #{
+                            namespace => Namespace
+                        }
+                    },
+                    {ok, Opts};
+                {error, Error} ->
+                    {error, Error}
+            end;
         {error, Error} ->
             {error, Error}
     end.
-
 
 
 %% @doc Adapts API request to a valid request
 search_params(#{srv:=SrvId}=Req) ->
     Params = maps:get(params, Req, #{}),
     Syntax = #{
+        namespace => binary,
+        deep => boolean,
+        from => pos_integer,
+        size => pos_integer,
         fieldSelector => {'__key', fields, binary},
         labelSelector => {'__key', labels, binary},
         linkedTo => {'__key', links, binary},
@@ -263,10 +339,16 @@ search_params(#{srv:=SrvId}=Req) ->
         fts => binary,
         sort => binary
     },
-    {ok, Params2} = nklib_syntax:parse_all(Params, Syntax),
-    Params3 = parse_params_fields(Params2),
-    Params4 = Params3#{fields_trans => nkactor_kapi:get_fields_trans(SrvId)},
-    Req#{params => Params4}.
+    case nklib_syntax:parse(Params, Syntax) of
+        {ok, Params2, []} ->
+            Params3 = parse_params_fields(Params2),
+            Params4 = Params3#{fields_trans => nkactor_kapi:get_fields_trans(SrvId)},
+            {ok, Params4};
+        {ok, _, [Field|_]} ->
+            {error, {parameter_invalid, Field}};
+        {error, Error} ->
+            {error, Error}
+    end.
 
 
 %% @private

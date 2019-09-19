@@ -130,16 +130,17 @@ actor_kapi_fields_trans(Map) ->
                              nkactor:subresource(), nkactor:request()) ->
     {ok, nkactor:request()} | {error, term(), nkactor:request()}.
 
-actor_kapi_pre_request(list, _Group, _Res, <<>>, Req) ->
-    {ok, nkactor_kapi_parse:search_params(Req)};
-
-actor_kapi_pre_request(Verb, Group, Res, <<>>, #{srv:=SrvId, body:=Actor}=Req)
-        when (Verb==create orelse Verb==update) andalso is_map(Actor) ->
-    case nkactor_kapi_parse:from_external(SrvId, Group, Res, Actor) of
-        {ok, Actor2} ->
-            {ok, Req#{body:=Actor2}};
-        {error, Error} ->
-            {error, Error, Req}
+actor_kapi_pre_request(Verb, Group, Res, <<>>, #{srv:=SrvId}=Req) ->
+    case (Verb==create orelse Verb==update) andalso Req of
+        #{body:=Actor} when is_map(Actor) ->
+            case nkactor_kapi_parse:from_external(SrvId, Group, Res, Actor) of
+                {ok, Actor2} ->
+                    {ok, Req#{body:=Actor2}};
+                {error, Error} ->
+                    {error, Error, Req}
+            end;
+        _ ->
+            {ok, Req}
     end;
 
 actor_kapi_pre_request(_Verb, _Group, _Res, _SubRes, Req) ->
