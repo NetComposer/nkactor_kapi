@@ -36,7 +36,7 @@
 -module(nkactor_kapi).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
--export([http_request/4, request/1, search/1]).
+-export([http_request/4, request/2, search/2]).
 -export([get_fields_trans/1, get_fields_rev/1, rev_field/2]).
 -export_type([api_vsn/0, kind/0]).
 
@@ -81,15 +81,16 @@ http_request(ActorSrvId, Method, Path, Req) ->
 %% - Calls standard nkactor_request:pre_request/1 and then actor_kapi_pre_request
 %% - Calls standard nkactor_request:do_request/1
 %% - Calls nkactor_request:post_request/1 and then actor_kapi_post_request
--spec request(nkactor:request()) ->
+-spec request(nkserver:id(), nkactor:request()) ->
     {ok|created, map(), nkactor:request()} |
     {status, map(), nkactor:request()} |
     {error, map(), nkactor:request()} |
     {raw, {CT::binary(), Body::binary()}, nkactor:request()}.
 
-request(Req) ->
+request(ActorSrvId, Req) ->
     % We need to update body, in case it provides group, resource, etc.
-    Reply = case nkactor_kapi_parse:req_actor(Req) of
+    % ActorSrvId is added to be sure it is there, in case of error before namespace check
+    Reply = case nkactor_kapi_parse:req_actor(Req#{srv=>ActorSrvId}) of
         {ok, Req2} ->
             % Body is updated to standard format, but no data or metadata processing
             case nkactor_request:pre_request(Req2) of
@@ -127,12 +128,12 @@ request(Req) ->
 %% @doc Process an actor API request, but after adapting the actor
 %% calling callback actor_api_pre_search/2, and then
 %% actor_api_post_request/2 to adapt the response to API's format
--spec search(nkactor:request()) ->
+-spec search(nkserver:id(), nkactor:request()) ->
     {ok, map(), nkactor:request()} |
     {error, map(), nkactor:request()}.
 
-search(#{srv:=SrvId, verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
-    Reply = case nkactor_kapi_parse:search_opts(Req) of
+search(ActorSrvId, #{verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
+    Reply = case nkactor_kapi_parse:search_opts(Req#{srv=>ActorSrvId}) of
         {ok, Opts} ->
             case nkactor_request:pre_request(Req) of
                 {ok, Req2} ->
@@ -140,11 +141,11 @@ search(#{srv:=SrvId, verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
                     Spec2 = maps:without([apiVersion, <<"apiVersion">>, kind, <<"kind">>], Spec1),
                     ReqReply = case Verb of
                         list ->
-                            case nkactor:search_actors(SrvId, Spec2, Opts) of
+                            case nkactor:search_actors(ActorSrvId, Spec2, Opts) of
                                 {ok, ActorList, Meta} ->
                                     ActorList2 = lists:map(
                                         fun(Actor) ->
-                                            nkactor_kapi_unparse:to_external(SrvId, Actor)
+                                            nkactor_kapi_unparse:to_external(ActorSrvId, Actor)
                                         end,
                                         ActorList),
                                     reply({ok, Meta#{items=>ActorList2}, Req2});
@@ -152,7 +153,7 @@ search(#{srv:=SrvId, verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
                                     reply({error, Error, Req2})
                             end;
                         deletecollection ->
-                            case nkactor:delete_multi(SrvId, Spec2, Opts) of
+                            case nkactor:delete_multi(ActorSrvId, Spec2, Opts) of
                                 {ok, Meta} ->
                                     {ok, Meta, Req2};
                                 {error, Error} ->
@@ -168,7 +169,7 @@ search(#{srv:=SrvId, verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
     end,
     reply(Reply);
 
-search(Req) ->
+search(_ActorSrvId, Req) ->
     reply({error, verb_not_allowed, Req}).
 
 

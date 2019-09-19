@@ -190,7 +190,7 @@ do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Name], 
     do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, <<"namespaces">>, Name], RestReq);
 
 % /apis/core/v1/namespaces/Namespace/ResType
-do_rest_api(_ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType], RestReq) ->
+do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType], RestReq) ->
     ApiReq = #{
         verb => Verb,
         group => Group,
@@ -198,24 +198,22 @@ do_rest_api(_ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namesp
         namespace => Namespace,
         resource => ResType
     },
-    launch_rest_api(ApiReq, RestReq);
+    launch_rest_api(ActorSrvId, ApiReq, RestReq);
 
 % /apis/core/v1/namespaces/Namespace/ResType/_upload
 do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, <<"_upload">>], RestReq) ->
     ApiReq = #{
-        srv => ActorSrvId,
         verb => Verb,
         group => Group,
         vsn => Vsn,
         namespace => Namespace,
         resource => ResType
     },
-    launch_rest_upload(ApiReq, RestReq);
+    launch_rest_upload(ActorSrvId, ApiReq, RestReq);
 
 % /apis/core/v1/namespaces/Namespace/ResType/Name/SubRes/_upload
 do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name, RestType2, <<"_upload">>], RestReq) ->
     ApiReq = #{
-        srv => ActorSrvId,
         verb => Verb,
         group => Group,
         vsn => Vsn,
@@ -224,10 +222,10 @@ do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespa
         name => Name,
         subresource => RestType2
     },
-    launch_rest_upload(ApiReq, RestReq);
+    launch_rest_upload(ActorSrvId, ApiReq, RestReq);
 
 % /apis/core/v1/namespaces/Namespace/ResType/Name...
-do_rest_api(_ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name|SubRes], RestReq) ->
+do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name|SubRes], RestReq) ->
     ApiReq1 = #{
         verb => Verb,
         group => Group,
@@ -239,10 +237,10 @@ do_rest_api(_ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namesp
     case lists:reverse(SubRes) of
         [<<"_upload">>|SubRes2] ->
             ApiReq2 = ApiReq1#{subresource => nklib_util:bjoin(lists:reverse(SubRes2), $/)},
-            launch_rest_upload(ApiReq2, RestReq);
+            launch_rest_upload(ActorSrvId, ApiReq2, RestReq);
         _ ->
             ApiReq2 = ApiReq1#{subresource => nklib_util:bjoin(SubRes, $/)},
-            launch_rest_api(ApiReq2, RestReq)
+            launch_rest_api(ActorSrvId, ApiReq2, RestReq)
     end;
 
 % /apis/core/v1/ResType (implicit namespace)
@@ -264,15 +262,13 @@ do_rest_api(ActorSrvId, Verb, [?GROUP_SEARCH, Vsn], RestReq) ->
 % /search/v1/namespaces/Namespace
 do_rest_api(ActorSrvId, Verb, [?GROUP_SEARCH, Vsn, <<"namespaces">>, Namespace], RestReq) ->
     ApiReq = #{
-        srv => ActorSrvId,
         verb => Verb,
         group => ?GROUP_SEARCH,
         vsn => Vsn,
         resource => <<"actors">>,
         namespace => Namespace
     },
-    lager:error("NKLOG REST SEARCH ~p", [ActorSrvId]),
-    launch_rest_search(ApiReq, RestReq);
+    launch_rest_search(ActorSrvId, ApiReq, RestReq);
 
 
 % /graphql
@@ -322,7 +318,7 @@ do_rest_api(_ActorSrvId, _Verb, Path, RestReq) ->
 
 
 %% @doc
-launch_rest_api(ApiReq, RestReq) ->
+launch_rest_api(ActorSrvId, ApiReq, RestReq) ->
     #{verb:=Verb} = ApiReq,
     ?API_DEBUG("HTTP incoming: ~s ~p", [Verb, ApiReq]),
     Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
@@ -385,12 +381,12 @@ ApiReq2 = ApiReq#{
         },
         ot_span_id => maps:get(span, RestReq, undefined)
     },
-    {Status, Result, #{meta:=#{nkrest_req:=Req3}}} = nkactor_kapi:request(ApiReq2),
+    {Status, Result, #{meta:=#{nkrest_req:=Req3}}} = nkactor_kapi:request(ActorSrvId, ApiReq2),
     {Status, Result, Req3}.
 
 
 %% @doc
-launch_rest_upload(ApiReq, RestReq) ->
+launch_rest_upload(ActorSrvId, ApiReq, RestReq) ->
     #{verb:=Verb} = ApiReq,
     ?API_DEBUG("HTTP incoming upload: ~s ~p", [Verb, ApiReq]),
     Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
@@ -427,13 +423,12 @@ launch_rest_upload(ApiReq, RestReq) ->
             nkrest_req => Req2
         }
     },
-    {Status, Result, #{meta:=#{nkrest_req:=Req3}}} = nkactor_kapi:request(ApiReq2),
+    {Status, Result, #{meta:=#{nkrest_req:=Req3}}} = nkactor_kapi:request(ActorSrvId, ApiReq2),
     {Status, Result, Req3}.
 
 
 %% @private
-launch_rest_search(ApiReq, RestReq) ->
-    lager:error("NKLOG DO SEARCH ~p", [ApiReq]),
+launch_rest_search(ActorSrvId, ApiReq, RestReq) ->
     Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
     Hds = nkrest_http:get_headers(RestReq),
     Token = case maps:get(<<"x-nkdomain-token">>, Hds, <<>>) of
@@ -474,7 +469,7 @@ launch_rest_search(ApiReq, RestReq) ->
             nkrest_req => Req2
         }
     },
-    {Status, Result, #{meta:=#{nkrest_req:=Req3}}} = nkactor_kapi:search(ApiReq2),
+    {Status, Result, #{meta:=#{nkrest_req:=Req3}}} = nkactor_kapi:search(ActorSrvId, ApiReq2),
     {Status, Result, Req3}.
 
 
