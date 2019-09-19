@@ -190,9 +190,8 @@ do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Name], 
     do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, <<"namespaces">>, Name], RestReq);
 
 % /apis/core/v1/namespaces/Namespace/ResType
-do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType], RestReq) ->
+do_rest_api(_ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType], RestReq) ->
     ApiReq = #{
-        srv => ActorSrvId,
         verb => Verb,
         group => Group,
         vsn => Vsn,
@@ -228,9 +227,8 @@ do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespa
     launch_rest_upload(ApiReq, RestReq);
 
 % /apis/core/v1/namespaces/Namespace/ResType/Name...
-do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name|SubRes], RestReq) ->
+do_rest_api(_ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name|SubRes], RestReq) ->
     ApiReq1 = #{
-        srv => ActorSrvId,
         verb => Verb,
         group => Group,
         vsn => Vsn,
@@ -273,6 +271,7 @@ do_rest_api(ActorSrvId, Verb, [?GROUP_SEARCH, Vsn, <<"namespaces">>, Namespace],
         resource => <<"actors">>,
         namespace => Namespace
     },
+    lager:error("NKLOG REST SEARCH ~p", [ActorSrvId]),
     launch_rest_search(ApiReq, RestReq);
 
 
@@ -434,6 +433,7 @@ launch_rest_upload(ApiReq, RestReq) ->
 
 %% @private
 launch_rest_search(ApiReq, RestReq) ->
+    lager:error("NKLOG DO SEARCH ~p", [ApiReq]),
     Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
     Hds = nkrest_http:get_headers(RestReq),
     Token = case maps:get(<<"x-nkdomain-token">>, Hds, <<>>) of

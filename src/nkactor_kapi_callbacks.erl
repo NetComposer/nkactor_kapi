@@ -123,6 +123,9 @@ actor_kapi_fields_trans(Map) ->
 
 %% @doc Called from nkactor_kapi:request/1 to modify a request before sending it
 %% to the request processor
+%% - if it is list and no subresource, calls nkactor_kapi_parse:search_params/1
+%% - if it a create or update, nkactor_kapi_parse:from_external/4
+%% - otherwise does nothing
 -spec actor_kapi_pre_request(nkactor_request:verb(), nkactor:group(), nkactor:resource(),
                              nkactor:subresource(), nkactor:request()) ->
     {ok, nkactor:request()} | {error, term(), nkactor:request()}.
