@@ -133,11 +133,12 @@ request(ActorSrvId, Req) ->
     {error, map(), nkactor:request()}.
 
 search(ActorSrvId, #{verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
-    Reply = case nkactor_kapi_parse:search_opts(Req#{srv=>ActorSrvId}) of
+    Req2 = Req#{srv=>ActorSrvId},
+    Reply = case nkactor_kapi_parse:search_opts(Req2) of
         {ok, Opts} ->
-            case nkactor_request:pre_request(Req) of
-                {ok, Req2} ->
-                    Spec1 = maps:get(body, Req2, #{}),
+            case nkactor_request:pre_request(Req2) of
+                {ok, Req3} ->
+                    Spec1 = maps:get(body, Req3, #{}),
                     Spec2 = maps:without([apiVersion, <<"apiVersion">>, kind, <<"kind">>], Spec1),
                     ReqReply = case Verb of
                         list ->
@@ -148,24 +149,24 @@ search(ActorSrvId, #{verb:=Verb}=Req) when Verb==list; Verb==deletecollection ->
                                             nkactor_kapi_unparse:to_external(ActorSrvId, Actor)
                                         end,
                                         ActorList),
-                                    reply({ok, Meta#{items=>ActorList2}, Req2});
+                                    reply({ok, Meta#{items=>ActorList2}, Req3});
                                 {error, Error} ->
-                                    reply({error, Error, Req2})
+                                    reply({error, Error, Req3})
                             end;
                         deletecollection ->
                             case nkactor:delete_multi(ActorSrvId, Spec2, Opts) of
                                 {ok, Meta} ->
-                                    {ok, Meta, Req2};
+                                    {ok, Meta, Req3};
                                 {error, Error} ->
-                                    {error, Error, Req2}
+                                    {error, Error, Req3}
                             end
                     end,
-                    nkactor_request:post_request(ReqReply, Req2);
-                {error, Error, Req2} ->
-                    {error, Error, Req2}
+                    nkactor_request:post_request(ReqReply, Req3);
+                {error, Error, Req3} ->
+                    {error, Error, Req3}
             end;
         {error, Error} ->
-            {error, Error, Req}
+            {error, Error, Req2}
     end,
     reply(Reply);
 

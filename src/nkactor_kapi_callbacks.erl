@@ -110,11 +110,10 @@ actor_kapi_fields_trans(Map) ->
         'metadata.creationTime' => 'metadata.creation_time',
         'metadata.expiresTime' => 'metadata.expires_time',
         'metadata.inAlarm' => 'metadata.in_alarm',
-        'metadata.isActive' => 'metadata.is_active',
         'metadata.isEnabled' => 'metadata.is_enabled',
         'metadata.name' => 'name',
         'metadata.namespace' => 'namespace',
-        'metadata.nextStatusTime' =>'metadata.next_status_time',
+        'metadata.activateTime' =>'metadata.activate_time',
         'metadata.resourceVersion' => 'metadata.hash',
         'metadata.uid' => 'uid',
         'metadata.updateTime' => 'metadata.update_time'

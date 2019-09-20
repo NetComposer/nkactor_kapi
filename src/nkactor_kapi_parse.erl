@@ -155,7 +155,6 @@ actor_metadata(Actor) when is_map(Actor) ->
             creationTime => {'__key', creation_time},
             updateTime => {'__key', update_time},
             isEnabled => {'__key', is_enabled},
-            isActive => {'__key', is_active},
             expiresTime => {'__key', expires_time},
             inAlarm => {'__key', in_alarm},
             alarms => {list, #{
@@ -163,7 +162,7 @@ actor_metadata(Actor) when is_map(Actor) ->
             }},
             updatedBy => {'__key', updated_by},
             createdBy => {'__key', created_by},
-            nextStatusTime => {'__key', next_status_time}
+            activateTime => {'__key', activate_time}
         }
     },
     {ok, Parsed} = nklib_syntax:parse_all(Actor, Syntax),
@@ -173,7 +172,7 @@ actor_metadata(Actor) ->
     Actor.
 
 %% @doc
-params(list, <<>>, Req) ->
+params(Verb, <<>>, Req) when Verb==list; Verb==deletecollection ->
     case search_params(Req) of
         {ok, Params2} ->
             {ok, Req#{params:=Params2}};
