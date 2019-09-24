@@ -23,7 +23,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([status/1]).
 -export([api_get_groups/2, api_get_paths/2]).
--export([actor_id/2, actor_kapi_fields_trans/1]).
+-export([actor_path_to_id/2, actor_kapi_fields_trans/1]).
 -export([actor_kapi_pre_request/5, actor_kapi_post_request/5]).
 -export([actor_kapi_parse/2, actor_kapi_unparse/2]).
 
@@ -46,7 +46,7 @@ status(_) -> continue.
 %% ===================================================================
 
 %% @doc
-actor_id(_SrvId, [<<"apis">>, Group, _Vsn, <<"namespaces">>, Namespace, Resource, Name]) ->
+actor_path_to_id(_SrvId, [<<"apis">>, Group, _Vsn, <<"namespaces">>, Namespace, Resource, Name]) ->
     #actor_id{
         group = Group,
         resource = Resource,
@@ -54,7 +54,7 @@ actor_id(_SrvId, [<<"apis">>, Group, _Vsn, <<"namespaces">>, Namespace, Resource
         name = Name
     };
 
-actor_id(SrvId, [<<"apis">>, Group, _Vsn, Resource, Name]) ->
+actor_path_to_id(SrvId, [<<"apis">>, Group, _Vsn, Resource, Name]) ->
     #actor_id{
         group = Group,
         resource = Resource,
@@ -62,7 +62,7 @@ actor_id(SrvId, [<<"apis">>, Group, _Vsn, Resource, Name]) ->
         name = Name
     };
 
-actor_id(_SrvId, _Parts) ->
+actor_path_to_id(_SrvId, _Parts) ->
     continue.
 
 

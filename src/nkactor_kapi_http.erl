@@ -323,7 +323,7 @@ launch_rest_api(ActorSrvId, ApiReq, RestReq) ->
     ?API_DEBUG("HTTP incoming: ~s ~p", [Verb, ApiReq]),
     Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
     Hds = nkrest_http:get_headers(RestReq),
-    Token = case maps:get(<<"x-nkdomain-token">>, Hds, <<>>) of
+    Token = case maps:get(<<"x-nk-token">>, Hds, <<>>) of
         <<>> ->
             maps:get(<<"adminToken">>, Qs, <<>>);
         HdToken ->
@@ -391,7 +391,7 @@ launch_rest_upload(ActorSrvId, ApiReq, RestReq) ->
     ?API_DEBUG("HTTP incoming upload: ~s ~p", [Verb, ApiReq]),
     Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
     Hds = nkrest_http:get_headers(RestReq),
-    Token = case maps:get(<<"x-nkdomain-token">>, Hds, <<>>) of
+    Token = case maps:get(<<"x-nk-token">>, Hds, <<>>) of
         <<>> ->
             maps:get(<<"adminToken">>, Qs, <<>>);
         HdToken ->
@@ -412,7 +412,6 @@ launch_rest_upload(ActorSrvId, ApiReq, RestReq) ->
             throw({error, method_not_allowed, RestReq})
     end,
     ApiReq2 = ApiReq#{
-        %class => upload,
         verb => Verb2,
         params => Qs,
         body => Body,
@@ -431,7 +430,7 @@ launch_rest_upload(ActorSrvId, ApiReq, RestReq) ->
 launch_rest_search(ActorSrvId, ApiReq, RestReq) ->
     Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
     Hds = nkrest_http:get_headers(RestReq),
-    Token = case maps:get(<<"x-nkdomain-token">>, Hds, <<>>) of
+    Token = case maps:get(<<"x-nk-token">>, Hds, <<>>) of
         <<>> ->
             maps:get(<<"adminToken">>, Qs, <<>>);
         HdToken ->
@@ -477,7 +476,7 @@ launch_rest_search(ActorSrvId, ApiReq, RestReq) ->
 launch_rest_bulk(ActorSrvId, <<"PUT">>, RestReq) ->
     Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
     Hds = nkrest_http:get_headers(RestReq),
-    Token = case maps:get(<<"x-nkdomain-token">>, Hds, <<>>) of
+    Token = case maps:get(<<"x-nk-token">>, Hds, <<>>) of
         <<>> ->
             maps:get(<<"adminToken">>, Qs, <<>>);
         HdToken ->

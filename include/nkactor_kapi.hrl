@@ -30,7 +30,7 @@
             {resource, maps:get(resource, Req, <<>>)},
             {name, maps:get(name, Req, <<>>)}
         ],
-        "NkDOMAIN API (~s ~s/~s/~s) " ++ Txt,
+        "NkACTOR KAPI (~s ~s/~s/~s) " ++ Txt,
         [
             maps:get(verb, Req, get),
             maps:get(group, Req, <<>>),
@@ -41,7 +41,7 @@
     )).
 
 -define(API_LOG(Type, Txt, Args),
-    lager:Type( "NkDOMAIN API " ++ Txt, Args)).
+    lager:Type( "NkACTOR KAPI " ++ Txt, Args)).
 
 
 -endif.

@@ -183,11 +183,9 @@ params(Verb, <<>>, Req) when Verb==list; Verb==deletecollection ->
 
 params(Verb, <<>>, #{params:=Params}=Req) ->
     Syntax = params_syntax(Verb),
-    case nklib_syntax:parse(Params, Syntax) of
-        {ok, Params2, []} ->
+    case nklib_syntax:parse_all(Params, Syntax) of
+        {ok, Params2} ->
             {ok, Req#{params:=Params2}};
-        {ok, _, [Field|_]} ->
-            {error, {parameter_invalid, Field}};
         {error, Error} ->
             {error, Error}
     end;
