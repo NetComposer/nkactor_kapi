@@ -155,13 +155,14 @@ actor_metadata(Actor) when is_map(Actor) ->
             creationTime => {'__key', creation_time},
             updateTime => {'__key', update_time},
             isEnabled => {'__key', is_enabled},
-            expiresTime => {'__key', expires_time},
+            expireTime => {'__key', expire_time},
             inAlarm => {'__key', in_alarm},
             alarms => {list, #{
                 lastTime => {'__key', last_time}
             }},
             updatedBy => {'__key', updated_by},
             createdBy => {'__key', created_by},
+            autoActivate => {'__key', auto_activate},
             activateTime => {'__key', activate_time}
         }
     },
@@ -175,7 +176,7 @@ actor_metadata(Actor) ->
 params(Verb, <<>>, Req) when Verb==list; Verb==deletecollection ->
     case search_params(Req) of
         {ok, Params2} ->
-            {ok, Req#{params:=Params2}};
+            {ok, Req#{params=>Params2}};
         {error, Error} ->
             {error, Error}
     end;

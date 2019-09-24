@@ -97,7 +97,7 @@ actor_to_api_actor_syntax() ->
             generation => {'__key', <<"generation">>},
             creation_time => {'__key', <<"creationTime">>},
             update_time => {'__key', <<"updateTime">>},
-            expires_time => {'__key', <<"expiresTime">>},
+            expire_time => {'__key', <<"expireTime">>},
             labels => {'__key', <<"labels">>},
             fts => {'__key', <<"fts">>},
             links => {'__key', <<"links">>},
@@ -111,6 +111,7 @@ actor_to_api_actor_syntax() ->
                 message => {'__key', <<"message">>},
                 meta => {'__key', <<"meta">>}
             }}},
+            auto_activate => {'__key', <<"autoActivate">>},
             activate_time => {'__key', <<"activateTime">>},
             description => {'__key', <<"description">>},
             trace_id => {'__key', <<"trace_id">>}

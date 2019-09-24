@@ -192,10 +192,10 @@ get_fields_rev(SrvId) ->
 rev_field(SrvId, Field) ->
     case maps:get(Field, get_fields_rev(SrvId), Field) of
         <<"data.", Field2/binary>> ->
-            lager:error("NKLOG F1 ~s -> ~s", [Field, Field2]),
+            %lager:error("NKLOG F1 ~s -> ~s", [Field, Field2]),
             Field2;
         Field2 ->
-            lager:error("NKLOG F2 ~s -> ~s", [Field, Field2]),
+            %lager:error("NKLOG F2 ~s -> ~s", [Field, Field2]),
             Field2
     end.
 

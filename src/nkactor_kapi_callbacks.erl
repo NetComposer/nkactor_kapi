@@ -108,7 +108,7 @@ actor_kapi_fields_trans(Map) ->
         'apiVersion' => 'group',
         'kind' => 'metadata.kind',
         'metadata.creationTime' => 'metadata.creation_time',
-        'metadata.expiresTime' => 'metadata.expires_time',
+        'metadata.expireTime' => 'metadata.expire_time',
         'metadata.inAlarm' => 'metadata.in_alarm',
         'metadata.isEnabled' => 'metadata.is_enabled',
         'metadata.name' => 'name',
