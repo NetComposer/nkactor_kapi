@@ -200,10 +200,21 @@ do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespa
     },
     launch_rest_api(ActorSrvId, ApiReq, RestReq);
 
-% /apis/core/v1/namespaces/Namespace/ResType/_upload
-do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, <<"_upload">>], RestReq) ->
+% /apis/core/v1/namespaces/Namespace/ResType/_download
+do_rest_api(ActorSrvId, <<"GET">>, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name, <<"_download">>], RestReq) ->
     ApiReq = #{
-        verb => Verb,
+        verb => download,
+        group => Group,
+        vsn => Vsn,
+        namespace => Namespace,
+        name => Name,
+        resource => ResType
+    },
+    launch_rest_api(ActorSrvId, ApiReq, RestReq);
+
+% /apis/core/v1/namespaces/Namespace/ResType/_upload
+do_rest_api(ActorSrvId, <<"POST">>, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, <<"_upload">>], RestReq) ->
+    ApiReq = #{
         group => Group,
         vsn => Vsn,
         namespace => Namespace,
@@ -211,10 +222,9 @@ do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespa
     },
     launch_rest_upload(ActorSrvId, ApiReq, RestReq);
 
-% /apis/core/v1/namespaces/Namespace/ResType/Name/SubRes/_upload
-do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name, RestType2, <<"_upload">>], RestReq) ->
+% /apis/core/v1/namespaces/Namespace/ResType/Name/SubResType/_upload
+do_rest_api(ActorSrvId, <<"POST">>, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name, RestType2, <<"_upload">>], RestReq) ->
     ApiReq = #{
-        verb => Verb,
         group => Group,
         vsn => Vsn,
         namespace => Namespace,
@@ -234,14 +244,12 @@ do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespa
         resource => ResType,
         name => Name
     },
-    case lists:reverse(SubRes) of
-        [<<"_upload">>|SubRes2] ->
-            ApiReq2 = ApiReq1#{subresource => nklib_util:bjoin(lists:reverse(SubRes2), $/)},
-            launch_rest_upload(ActorSrvId, ApiReq2, RestReq);
-        _ ->
-            ApiReq2 = ApiReq1#{subresource => nklib_util:bjoin(SubRes, $/)},
-            launch_rest_api(ActorSrvId, ApiReq2, RestReq)
-    end;
+%%    case lists:reverse(SubRes) of
+%%        [<<"_upload">>|SubRes2] ->
+%%            ApiReq2 = ApiReq1#{subresource => nklib_util:bjoin(lists:reverse(SubRes2), $/)},
+%%            launch_rest_upload(ActorSrvId, ApiReq2, RestReq);
+    ApiReq2 = ApiReq1#{subresource => nklib_util:bjoin(SubRes, $/)},
+    launch_rest_api(ActorSrvId, ApiReq2, RestReq);
 
 % /apis/core/v1/ResType (implicit namespace)
 do_rest_api(ActorSrvId, Verb, [<<"apis">>, Group, Vsn, ResType], RestReq) ->
@@ -366,6 +374,8 @@ launch_rest_api(ActorSrvId, ApiReq, RestReq) ->
             deletecollection;
         <<"DELETE">> ->
             delete;
+        download ->
+            download;
         _ ->
             throw({error, method_not_allowed, RestReq})
     end,
@@ -387,8 +397,7 @@ ApiReq2 = ApiReq#{
 
 %% @doc
 launch_rest_upload(ActorSrvId, ApiReq, RestReq) ->
-    #{verb:=Verb} = ApiReq,
-    ?API_DEBUG("HTTP incoming upload: ~s ~p", [Verb, ApiReq]),
+    ?API_DEBUG("HTTP incoming upload: ~p", [ApiReq]),
     Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
     Hds = nkrest_http:get_headers(RestReq),
     Token = case maps:get(<<"x-nk-token">>, Hds, <<>>) of
@@ -405,16 +414,11 @@ launch_rest_upload(ActorSrvId, ApiReq, RestReq) ->
             ?API_LOG(warning, "error reading body: ~p" , [Error]),
             throw({error, request_body_invalid, RestReq})
     end,
-    Verb2 = case Verb of
-        <<"POST">> ->
-            upload;
-        _ ->
-            throw({error, method_not_allowed, RestReq})
-    end,
     ApiReq2 = ApiReq#{
-        verb => Verb2,
+        verb => upload,
         params => Qs,
         body => Body,
+        content_type => maps:get(<<"content-type">>, Hds, <<>>),
         auth => #{token => Token},
         callback => ?MODULE,
         external_url => nkrest_http:get_external_url(RestReq),

@@ -165,8 +165,13 @@ actor_kapi_post_request(get, _Group, _Res, <<>>, {ok, Actor, #{srv:=SrvId}=Req})
     {ok, Actor2, Req};
 
 actor_kapi_post_request(Verb, _Group, _Res, <<>>, {Status, Actor, #{srv:=SrvId}=Req})
-        when (Verb==create orelse Verb==update) andalso
-             (Status==ok orelse Status==created) ->
+    when (Verb==create orelse Verb==update) andalso
+    (Status==ok orelse Status==created) ->
+    Actor2 = nkactor_kapi_unparse:to_external(SrvId, Actor),
+    {Status, Actor2, Req};
+
+actor_kapi_post_request(upload, _Group, _Res, _SubRes, {Status, Actor, #{srv:=SrvId}=Req})
+    when (Status==ok orelse Status==created) ->
     Actor2 = nkactor_kapi_unparse:to_external(SrvId, Actor),
     {Status, Actor2, Req};
 
