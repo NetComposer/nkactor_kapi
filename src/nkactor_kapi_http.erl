@@ -223,14 +223,13 @@ do_rest_api(ActorSrvId, <<"POST">>, [<<"apis">>, Group, Vsn, <<"namespaces">>, N
     launch_rest_upload(ActorSrvId, ApiReq, RestReq);
 
 % /apis/core/v1/namespaces/Namespace/ResType/Name/SubResType/_upload
-do_rest_api(ActorSrvId, <<"POST">>, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name, RestType2, <<"_upload">>], RestReq) ->
+do_rest_api(ActorSrvId, <<"POST">>, [<<"apis">>, Group, Vsn, <<"namespaces">>, Namespace, ResType, Name, <<"_upload">>], RestReq) ->
     ApiReq = #{
         group => Group,
         vsn => Vsn,
         namespace => Namespace,
         resource => ResType,
-        name => Name,
-        subresource => RestType2
+        name => Name
     },
     launch_rest_upload(ActorSrvId, ApiReq, RestReq);
 
@@ -351,8 +350,6 @@ launch_rest_api(ActorSrvId, ApiReq, RestReq) ->
         <<"GET">> when ToWatch ->
             watch;
         <<"GET">> when Name == <<>> ->
-            list;
-        <<"POST">> when Name == <<>> ->
             list;
         <<"GET">> ->
             get;
