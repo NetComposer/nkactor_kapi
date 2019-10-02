@@ -299,11 +299,6 @@ do_rest_api(_ActorSrvId, Verb, [<<"_test">>, <<"faxin">>|Rest], RestReq) ->
     {binary, <<"application/xml">>, Rep};
 
 
-% /bulk
-do_rest_api(ActorSrvId, Verb, [?GROUP_BULK], RestReq) ->
-    launch_rest_bulk(ActorSrvId, Verb, RestReq);
-
-
 % /_test
 do_rest_api(_ActorSrvId, Verb, [<<"_test">>|Rest], RestReq) ->
     BodyOpts = #{max_size=>?MAX_BODY_SIZE},
@@ -473,43 +468,37 @@ launch_rest_search(ActorSrvId, ApiReq, RestReq) ->
     {Status, Result, Req3}.
 
 
-%% @private
-launch_rest_bulk(ActorSrvId, <<"PUT">>, RestReq) ->
-    Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
-    Hds = nkrest_http:get_headers(RestReq),
-    Token = case maps:get(<<"x-nk-token">>, Hds, <<>>) of
-        <<>> ->
-            maps:get(<<"adminToken">>, Qs, <<>>);
-        HdToken ->
-            HdToken
-    end,
-    BodyOpts = #{max_size=>?MAX_BODY_SIZE, parse=>true},
-    {Body, RestReq2} = case nkrest_http:get_body(RestReq, BodyOpts) of
-        {ok, B0, R0} ->
-            {B0, R0};
-        {error, Error} ->
-            ?API_LOG(warning, "error reading body: ~p" , [Error]),
-            throw({error, request_body_invalid, RestReq})
-    end,
-    Status = case nkdomain:load_actor_data(Body, Token) of
-        {ok, Res} ->
-            lists:map(
-                fun
-                    ({Name, created}) -> #{name=>Name, result=>created};
-                    ({Name, updated}) -> #{name=>Name, result=>updated};
-                    ({Name, {error, Error}}) -> #{name=>Name, result=>error, error=>nklib_util:to_binary(Error)}
-                end,
-                Res);
-        {error, LoadError} ->
-            nkactor_kapi_lib:error(ActorSrvId, LoadError)
-    end,
-    rest_api_reply(200, Status, RestReq2);
-
-launch_rest_bulk(_ActorSrvId, _Verb, RestReq) ->
-    throw({error, method_not_allowed, RestReq}).
-
-
-
+%%%% @private
+%%launch_rest_bulk(ActorSrvId, RestReq) ->
+%%    Qs = maps:from_list(nkrest_http:get_qs(RestReq)),
+%%    Hds = nkrest_http:get_headers(RestReq),
+%%    Token = case maps:get(<<"x-nk-token">>, Hds, <<>>) of
+%%        <<>> ->
+%%            maps:get(<<"adminToken">>, Qs, <<>>);
+%%        HdToken ->
+%%            HdToken
+%%    end,
+%%    BodyOpts = #{max_size=>?MAX_BODY_SIZE, parse=>true},
+%%    {Body, RestReq2} = case nkrest_http:get_body(RestReq, BodyOpts) of
+%%        {ok, B0, R0} ->
+%%            {B0, R0};
+%%        {error, Error} ->
+%%            ?API_LOG(warning, "error reading body: ~p" , [Error]),
+%%            throw({error, request_body_invalid, RestReq})
+%%    end,
+%%    Status = case nkdomain:load_actor_data(Body, Token) of
+%%        {ok, Res} ->
+%%            lists:map(
+%%                fun
+%%                    ({Name, created}) -> #{name=>Name, result=>created};
+%%                    ({Name, updated}) -> #{name=>Name, result=>updated};
+%%                    ({Name, {error, Error}}) -> #{name=>Name, result=>error, error=>nklib_util:to_binary(Error)}
+%%                end,
+%%                Res);
+%%        {error, LoadError} ->
+%%            nkactor_kapi_lib:error(ActorSrvId, LoadError)
+%%    end,
+%%    rest_api_reply(200, Status, RestReq2).
 
 
 %%%% @private
