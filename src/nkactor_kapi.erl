@@ -211,7 +211,7 @@ reply({status, Status, #{srv:=SrvId}=Req}) ->
     Status2 = nkactor_kapi_lib:status(SrvId, Status),
     {status, Status2, Req};
 
-reply({error, {field_invalid, Field}, #{srv:=SrvId}=Req}) ->
+reply({error, {field_static, Field}, #{srv:=SrvId}=Req}) ->
     Status2 = nkactor_kapi_lib:error(SrvId, {field_invalid, rev_field(SrvId, Field)}),
     {error, Status2, Req};
 
@@ -223,8 +223,8 @@ reply({error, {field_unknown, Field}, #{srv:=SrvId}=Req}) ->
     Status2 = nkactor_kapi_lib:error(SrvId, {field_unknown, rev_field(SrvId, Field)}),
     {error, Status2, Req};
 
-reply({error, {updated_invalid_field, Field}, #{srv:=SrvId}=Req}) ->
-    Status2 = nkactor_kapi_lib:error(SrvId, {updated_invalid_field, rev_field(SrvId, Field)}),
+reply({error, {updated_static_field, Field}, #{srv:=SrvId}=Req}) ->
+    Status2 = nkactor_kapi_lib:error(SrvId, {updated_static_field, rev_field(SrvId, Field)}),
     {error, Status2, Req};
 
 reply({error, Error, #{srv:=SrvId}=Req}) ->
