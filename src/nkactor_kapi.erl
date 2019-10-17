@@ -219,6 +219,10 @@ reply({error, {field_missing, Field}, #{srv:=SrvId}=Req}) ->
     Status2 = nkactor_kapi_lib:error(SrvId, {field_missing, rev_field(SrvId, Field)}),
     {error, Status2, Req};
 
+reply({error, {field_invalid, Field}, #{srv:=SrvId}=Req}) ->
+    Status2 = nkactor_kapi_lib:error(SrvId, {field_invalid, rev_field(SrvId, Field)}),
+    {error, Status2, Req};
+
 reply({error, {field_unknown, Field}, #{srv:=SrvId}=Req}) ->
     Status2 = nkactor_kapi_lib:error(SrvId, {field_unknown, rev_field(SrvId, Field)}),
     {error, Status2, Req};
