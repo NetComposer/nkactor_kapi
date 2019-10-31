@@ -63,7 +63,7 @@ start(_Type, _Args) ->
     case nklib_config:load_env(?APP, Syntax) of
         {ok, _} ->
             {ok, Pid} = nkactor_kapi_sup:start_link(),
-            {ok, Vsn} = application:get_key(nkactor, vsn),
+            {ok, Vsn} = application:get_key(nkactor_kapi, vsn),
             lager:info("NkACTOR K-API v~s has started.", [Vsn]),
             {ok, Pid};
         {error, Error} ->
