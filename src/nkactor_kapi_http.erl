@@ -380,8 +380,7 @@ ApiReq2 = ApiReq#{
         external_url => nkrest_http:get_external_url(RestReq),
         meta => #{
             nkrest_req => Req2
-        },
-        ot_span_id => maps:get(span, RestReq, undefined)
+        }
     },
     {Status, Result, #{meta:=#{nkrest_req:=Req3}}} = nkactor_kapi:request(ActorSrvId, ApiReq2),
     {Status, Result, Req3}.
